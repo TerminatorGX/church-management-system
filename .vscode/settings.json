@@ -1,0 +1,13 @@
+// .vscode/settings.json
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "files.associations": {
+    "*.env": "env"
+  },
+  "prisma.enablePreviewFeatures": true,
+  "prisma.pinToPrisma6": true
+}
