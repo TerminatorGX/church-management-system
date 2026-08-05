@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
@@ -12,15 +13,43 @@ import { askAssistant, titleFrom } from "./assistant.service";
 export const assistantRouter = Router();
 assistantRouter.use(requireAuth);
 
-/** Each call costs money — cap it per user rather than per IP. */
+/**
+ * Groq's free tier is ONE shared budget for the whole app, not per end-user —
+ * so this limiter keys on a constant instead of the caller, deliberately
+ * conservative to leave headroom under the account-wide ceiling.
+ */
 const askLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 15,
-  keyGenerator: (req) => req.user?.id ?? req.ip ?? "anonymous",
+  limit: 10,
+  keyGenerator: () => "global",
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  message: { error: "You are sending questions too quickly. Wait a minute and try again." },
+  message: { error: "The assistant is busy right now. Wait a minute and try again." },
 });
+
+/**
+ * A second, coarser guard on top of the per-minute limiter: caps total
+ * questions per day so a quiet-but-steady trickle of use across the day
+ * can't exhaust the free tier's daily request quota. Resets at UTC midnight;
+ * in-memory is fine here — worst case a restart gives back a day early.
+ */
+const DAILY_LIMIT = 200;
+let dailyCount = 0;
+let dailyResetAt = new Date().setUTCHours(24, 0, 0, 0);
+
+const dailyBudgetGuard = (_req: Request, res: Response, next: NextFunction) => {
+  if (Date.now() >= dailyResetAt) {
+    dailyCount = 0;
+    dailyResetAt = new Date().setUTCHours(24, 0, 0, 0);
+  }
+  if (dailyCount >= DAILY_LIMIT) {
+    return res
+      .status(429)
+      .json({ error: "The assistant has reached today's question limit. Try again tomorrow." });
+  }
+  dailyCount++;
+  next();
+};
 
 assistantRouter.get("/status", (_req, res) => {
   res.json({
@@ -28,7 +57,7 @@ assistantRouter.get("/status", (_req, res) => {
       enabled: assistantEnabled,
       message: assistantEnabled
         ? null
-        : "Set ANTHROPIC_API_KEY in backend/.env to turn on the assistant.",
+        : "Set GROQ_API_KEY in backend/.env to turn on the assistant.",
     },
   });
 });
@@ -81,6 +110,7 @@ const askSchema = z.object({
 assistantRouter.post(
   "/ask",
   askLimiter,
+  dailyBudgetGuard,
   validate(askSchema),
   asyncHandler(async (req, res) => {
     const { question, conversationId } = req.body as z.infer<typeof askSchema>;

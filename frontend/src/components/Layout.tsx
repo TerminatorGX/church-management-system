@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { FloatingAssistant } from "./FloatingAssistant";
 import type { Role } from "../lib/types";
 
 interface NavItem {
@@ -58,6 +59,7 @@ const ROLE_LABEL: Record<Role, string> = {
 export const Layout = () => {
   const { user, signOut, can } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const visibleSections = NAV.map((section) => ({
@@ -153,6 +155,8 @@ export const Layout = () => {
           <Outlet />
         </main>
       </div>
+
+      {location.pathname !== "/assistant" && <FloatingAssistant />}
     </div>
   );
 };

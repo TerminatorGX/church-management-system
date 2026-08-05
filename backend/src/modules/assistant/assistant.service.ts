@@ -1,12 +1,19 @@
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
+import type { ChatCompletionMessageParam } from "groq-sdk/resources/chat/completions";
 import { env, assistantEnabled } from "../../config/env";
 import type { AuthedUser } from "../../middleware/auth";
 import { runTool, toolDefinitions } from "./tools";
 
-const client = assistantEnabled ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) : null;
+const client = assistantEnabled ? new Groq({ apiKey: env.GROQ_API_KEY }) : null;
 
-/** Guards against a tool loop that never converges. */
-const MAX_TURNS = 8;
+/**
+ * Groq's free tier is a shared, account-wide budget (not per user), so these
+ * are deliberately tight: most questions here resolve in 1-2 real API calls
+ * (decide tool -> read result -> answer), and a short cap keeps a runaway
+ * loop from burning through the daily quota on its own.
+ */
+const MAX_TURNS = 4;
+const MAX_ANSWER_TOKENS = 600;
 
 const systemPrompt = (user: AuthedUser) => `
 You are the assistant inside a Church Management System. You help church staff
@@ -51,82 +58,74 @@ export const askAssistant = async (
 ): Promise<AssistantReply> => {
   if (!client) {
     throw new Error(
-      "The AI assistant is not configured. Add ANTHROPIC_API_KEY to backend/.env and restart the server.",
+      "The AI assistant is not configured. Add GROQ_API_KEY to backend/.env and restart the server.",
     );
   }
 
-  const messages: Anthropic.MessageParam[] = [
-    ...history.map((m) => ({
-      role: m.role === "USER" ? ("user" as const) : ("assistant" as const),
-      content: m.content,
-    })),
+  const messages: ChatCompletionMessageParam[] = [
+    { role: "system", content: systemPrompt(user) },
+    // Only the last few turns — the free tier is billed on total tokens per
+    // request, and this is a short-answer Q&A tool, not a long conversation.
+    ...history.slice(-6).map(
+      (m): ChatCompletionMessageParam => ({
+        role: m.role === "USER" ? "user" : "assistant",
+        content: m.content,
+      }),
+    ),
     { role: "user", content: question },
   ];
 
   const toolsUsed: string[] = [];
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const response = await client.messages.create({
-      model: env.ANTHROPIC_MODEL,
-      max_tokens: 4096,
-      // Effort low keeps this snappy for a chat box. Thinking stays on (the
-      // default): disabling it can make the model emit a tool call as plain
-      // text, which would silently never run.
-      output_config: { effort: "low" },
-      system: systemPrompt(user),
+    const response = await client.chat.completions.create({
+      model: env.GROQ_MODEL,
+      max_completion_tokens: MAX_ANSWER_TOKENS,
+      temperature: 0.3,
       tools: toolDefinitions,
+      tool_choice: "auto",
       messages,
     });
 
-    if (response.stop_reason === "refusal") {
-      return {
-        text: "I can't help with that request. Try rephrasing, or ask about members, attendance, giving, or the volunteer schedule.",
-        toolsUsed,
-      };
+    const choice = response.choices[0];
+    if (!choice) {
+      return { text: "The assistant did not return a response. Try again.", toolsUsed };
     }
 
-    if (response.stop_reason !== "tool_use") {
-      const text = response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("\n")
-        .trim();
-
+    const toolCalls = choice.message.tool_calls;
+    if (!toolCalls || toolCalls.length === 0) {
+      const text = choice.message.content?.trim();
       return {
         text: text || "I could not produce an answer for that. Try asking a different way.",
         toolsUsed,
       };
     }
 
-    messages.push({ role: "assistant", content: response.content });
+    messages.push(choice.message);
 
-    const toolUses = response.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
-    );
-
-    const results: Anthropic.ToolResultBlockParam[] = await Promise.all(
-      toolUses.map(async (call) => {
-        toolsUsed.push(call.name);
+    const results = await Promise.all(
+      toolCalls.map(async (call) => {
+        toolsUsed.push(call.function.name);
         try {
-          const result = await runTool(call.name, call.input as Record<string, unknown>, user);
+          const args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+          const result = await runTool(call.function.name, args, user);
           return {
-            type: "tool_result" as const,
-            tool_use_id: call.id,
+            role: "tool" as const,
+            tool_call_id: call.id,
             content: JSON.stringify(result),
           };
         } catch (err) {
-          console.error(`[assistant] tool ${call.name} failed:`, err);
+          console.error(`[assistant] tool ${call.function.name} failed:`, err);
           return {
-            type: "tool_result" as const,
-            tool_use_id: call.id,
+            role: "tool" as const,
+            tool_call_id: call.id,
             content: "The query failed. Tell the user the data could not be retrieved.",
-            is_error: true,
           };
         }
       }),
     );
 
-    messages.push({ role: "user", content: results });
+    messages.push(...results);
   }
 
   return {

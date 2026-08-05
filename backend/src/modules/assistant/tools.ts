@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import type Anthropic from "@anthropic-ai/sdk";
+import type { ChatCompletionTool } from "groq-sdk/resources/chat/completions";
 import { prisma } from "../../lib/prisma";
 import type { AuthedUser } from "../../middleware/auth";
 
@@ -11,84 +11,102 @@ import type { AuthedUser } from "../../middleware/auth";
 
 const canSeeFinance = (user: AuthedUser) => user.role === "ADMIN" || user.role === "FINANCE";
 
-export const toolDefinitions: Anthropic.Tool[] = [
+export const toolDefinitions: ChatCompletionTool[] = [
   {
-    name: "search_members",
-    description:
-      "Search the member directory by name, phone, email, skill, or department. " +
-      "Call this when the user asks who someone is, who has a particular skill, " +
-      "or wants a list of people matching a description.",
-    input_schema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Name, partial name, phone, or email" },
-        skill: { type: "string", description: "Filter to members who list this skill" },
-        departmentName: { type: "string", description: "Filter to members of this department" },
-        includeInactive: { type: "boolean", description: "Include archived members (default false)" },
-        limit: { type: "integer", description: "Max results, 1-50 (default 20)" },
+    type: "function",
+    function: {
+      name: "search_members",
+      description:
+        "Search the member directory by name, phone, email, skill, or department. " +
+        "Call this when the user asks who someone is, who has a particular skill, " +
+        "or wants a list of people matching a description.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Name, partial name, phone, or email" },
+          skill: { type: "string", description: "Filter to members who list this skill" },
+          departmentName: { type: "string", description: "Filter to members of this department" },
+          includeInactive: { type: "boolean", description: "Include archived members (default false)" },
+          limit: { type: "integer", description: "Max results, 1-50 (default 20)" },
+        },
       },
     },
   },
   {
-    name: "get_attendance_summary",
-    description:
-      "Attendance figures per service over a recent period, plus the overall average. " +
-      "Call this for questions about attendance trends, how many came on a given Sunday, " +
-      "or whether attendance is rising or falling.",
-    input_schema: {
-      type: "object",
-      properties: {
-        months: { type: "integer", description: "How many months back to look, 1-24 (default 3)" },
+    type: "function",
+    function: {
+      name: "get_attendance_summary",
+      description:
+        "Attendance figures per service over a recent period, plus the overall average. " +
+        "Call this for questions about attendance trends, how many came on a given Sunday, " +
+        "or whether attendance is rising or falling.",
+      parameters: {
+        type: "object",
+        properties: {
+          months: { type: "integer", description: "How many months back to look, 1-24 (default 3)" },
+        },
       },
     },
   },
   {
-    name: "get_giving_summary",
-    description:
-      "Contribution totals by fund and by month. FINANCE and ADMIN only — the tool " +
-      "returns an error for other roles. Call this for questions about giving, offerings, " +
-      "tithes, or fund balances.",
-    input_schema: {
-      type: "object",
-      properties: {
-        months: { type: "integer", description: "How many months back to look, 1-24 (default 3)" },
-        fundName: { type: "string", description: "Restrict to a single fund" },
+    type: "function",
+    function: {
+      name: "get_giving_summary",
+      description:
+        "Contribution totals by fund and by month. FINANCE and ADMIN only — the tool " +
+        "returns an error for other roles. Call this for questions about giving, offerings, " +
+        "tithes, or fund balances.",
+      parameters: {
+        type: "object",
+        properties: {
+          months: { type: "integer", description: "How many months back to look, 1-24 (default 3)" },
+          fundName: { type: "string", description: "Restrict to a single fund" },
+        },
       },
     },
   },
   {
-    name: "get_upcoming_schedule",
-    description:
-      "Upcoming events with their volunteer assignments and how many slots are still pending. " +
-      "Call this for questions about what is coming up, who is serving, or which rotas are short.",
-    input_schema: {
-      type: "object",
-      properties: {
-        limit: { type: "integer", description: "Max events, 1-20 (default 5)" },
+    type: "function",
+    function: {
+      name: "get_upcoming_schedule",
+      description:
+        "Upcoming events with their volunteer assignments and how many slots are still pending. " +
+        "Call this for questions about what is coming up, who is serving, or which rotas are short.",
+      parameters: {
+        type: "object",
+        properties: {
+          limit: { type: "integer", description: "Max events, 1-20 (default 5)" },
+        },
       },
     },
   },
   {
-    name: "find_members_needing_follow_up",
-    description:
-      "Active members with no recorded attendance in the last N months — the pastoral " +
-      "follow-up list. Call this when the user asks who has stopped coming or who needs " +
-      "a visit or a call.",
-    input_schema: {
-      type: "object",
-      properties: {
-        months: { type: "integer", description: "Absence window in months, 1-12 (default 2)" },
-        limit: { type: "integer", description: "Max results, 1-50 (default 20)" },
+    type: "function",
+    function: {
+      name: "find_members_needing_follow_up",
+      description:
+        "Active members with no recorded attendance in the last N months — the pastoral " +
+        "follow-up list. Call this when the user asks who has stopped coming or who needs " +
+        "a visit or a call.",
+      parameters: {
+        type: "object",
+        properties: {
+          months: { type: "integer", description: "Absence window in months, 1-12 (default 2)" },
+          limit: { type: "integer", description: "Max results, 1-50 (default 20)" },
+        },
       },
     },
   },
   {
-    name: "get_church_overview",
-    description:
-      "Headline counts: active members, families, departments, upcoming events. " +
-      "Call this for broad 'how are we doing' questions or when you need orientation " +
-      "before answering something more specific.",
-    input_schema: { type: "object", properties: {} },
+    type: "function",
+    function: {
+      name: "get_church_overview",
+      description:
+        "Headline counts: active members, families, departments, upcoming events. " +
+        "Call this for broad 'how are we doing' questions or when you need orientation " +
+        "before answering something more specific.",
+      parameters: { type: "object", properties: {} },
+    },
   },
 ];
 

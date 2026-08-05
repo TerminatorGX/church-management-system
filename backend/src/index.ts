@@ -9,7 +9,7 @@ const server = app.listen(env.PORT, () => {
   console.log(`  ---------------------------------------------`);
   console.log(`  http://localhost:${env.PORT}      (${env.NODE_ENV})`);
   console.log(`  CORS origin: ${env.CORS_ORIGIN}`);
-  console.log(`  AI assistant: ${assistantEnabled ? `on (${env.ANTHROPIC_MODEL})` : "off — no ANTHROPIC_API_KEY"}`);
+  console.log(`  AI assistant: ${assistantEnabled ? `on (${env.GROQ_MODEL})` : "off — no GROQ_API_KEY"}`);
   console.log(`  ---------------------------------------------\n`);
 });
 

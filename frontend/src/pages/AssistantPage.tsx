@@ -1,17 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError } from "../lib/api";
+import { api } from "../lib/api";
 import { useApi } from "../hooks/useApi";
+import { useAssistantChat } from "../hooks/useAssistantChat";
 import { useAuth } from "../context/AuthContext";
 import { fmtRelative } from "../lib/format";
+import { getSuggestions } from "../lib/assistantSuggestions";
 import { Button, Card, ErrorBox, Input, PageHeader, Spinner } from "../components/ui";
-import type { ChatMessage, Conversation } from "../lib/types";
-
-const SUGGESTIONS = [
-  "How has attendance changed over the last three months?",
-  "Who hasn't been to church recently and needs a follow-up call?",
-  "Which volunteer slots are still unfilled for the next service?",
-  "Who in the congregation can play keyboard or sing?",
-];
+import type { Conversation } from "../lib/types";
 
 const TOOL_LABELS: Record<string, string> = {
   search_members: "member directory",
@@ -23,19 +18,11 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 export const AssistantPage = () => {
-  const { user } = useAuth();
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { user, can } = useAuth();
+  const chat = useAssistantChat();
   const [question, setQuestion] = useState("");
-  const [thinking, setThinking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
-
-  const status = useApi(
-    (signal) =>
-      api<{ data: { enabled: boolean; message: string | null } }>("/assistant/status", { signal }),
-    [],
-  );
+  const suggestions = getSuggestions("/", can("FINANCE"));
 
   const conversations = useApi(
     (signal) => api<{ data: Conversation[] }>("/assistant/conversations", { signal }),
@@ -44,75 +31,27 @@ export const AssistantPage = () => {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, thinking]);
+  }, [chat.messages, chat.thinking]);
 
-  const openConversation = async (id: string) => {
-    setError(null);
-    try {
-      const res = await api<{ data: Conversation }>(`/assistant/conversations/${id}`);
-      setConversationId(id);
-      setMessages(res.data.messages ?? []);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not open that conversation.");
-    }
-  };
-
-  const startNew = () => {
-    setConversationId(null);
-    setMessages([]);
-    setError(null);
-  };
-
-  const send = async (text: string) => {
+  const submit = (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || thinking) return;
-
-    setError(null);
+    if (!trimmed) return;
     setQuestion("");
-
-    // Optimistic user bubble so the question appears immediately.
-    const optimistic: ChatMessage = {
-      id: `local-${Date.now()}`,
-      role: "USER",
-      content: trimmed,
-      toolsUsed: [],
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((m) => [...m, optimistic]);
-    setThinking(true);
-
-    try {
-      const res = await api<{ data: { conversationId: string; message: ChatMessage } }>(
-        "/assistant/ask",
-        { method: "POST", body: { question: trimmed, conversationId } },
-      );
-      setConversationId(res.data.conversationId);
-      setMessages((m) => [...m, res.data.message]);
-      conversations.reload();
-    } catch (err) {
-      // Roll the optimistic bubble back so the failed question isn't left hanging.
-      setMessages((m) => m.filter((msg) => msg.id !== optimistic.id));
-      setQuestion(trimmed);
-      setError(err instanceof ApiError ? err.message : "Could not reach the assistant.");
-    } finally {
-      setThinking(false);
-    }
+    void chat.send(trimmed, () => conversations.reload());
   };
 
-  if (status.loading) return <Spinner label="Checking the assistant" />;
+  if (chat.statusLoading) return <Spinner label="Checking the assistant" />;
 
-  if (status.data && !status.data.data.enabled) {
+  if (chat.enabled === false) {
     return (
       <>
         <PageHeader title="AI Assistant" />
         <Card>
           <div className="py-8 text-center">
             <p className="font-medium text-slate-800">The assistant is switched off</p>
-            <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-              {status.data.data.message}
-            </p>
+            <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">{chat.statusMessage}</p>
             <p className="mx-auto mt-4 max-w-md rounded-lg bg-slate-50 px-4 py-3 text-left font-mono text-xs text-slate-600">
-              ANTHROPIC_API_KEY="sk-ant-..."
+              GROQ_API_KEY="gsk_..."
             </p>
           </div>
         </Card>
@@ -125,7 +64,11 @@ export const AssistantPage = () => {
       <PageHeader
         title="AI Assistant"
         subtitle="Ask questions about your congregation. Answers come from your own data, scoped to your role."
-        actions={<Button variant="secondary" onClick={startNew}>New conversation</Button>}
+        actions={
+          <Button variant="secondary" onClick={chat.startNew}>
+            New conversation
+          </Button>
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-[16rem_1fr]">
@@ -138,9 +81,9 @@ export const AssistantPage = () => {
             {conversations.data?.data.map((c) => (
               <li key={c.id}>
                 <button
-                  onClick={() => openConversation(c.id)}
+                  onClick={() => chat.openConversation(c.id)}
                   className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                    c.id === conversationId
+                    c.id === chat.conversationId
                       ? "bg-brand-50 font-medium text-brand-700"
                       : "text-slate-600 hover:bg-slate-50"
                   }`}
@@ -157,17 +100,17 @@ export const AssistantPage = () => {
 
         <Card className="flex min-h-[32rem] flex-col">
           <div className="flex-1 space-y-4 overflow-y-auto">
-            {messages.length === 0 && !thinking && (
+            {chat.messages.length === 0 && !chat.thinking && (
               <div className="py-8 text-center">
                 <p className="font-medium text-slate-800">
                   Hello {user?.name.split(" ")[0]} — what would you like to know?
                 </p>
                 <p className="mt-1 text-sm text-slate-500">Try one of these:</p>
                 <div className="mx-auto mt-4 grid max-w-lg gap-2">
-                  {SUGGESTIONS.map((s) => (
+                  {suggestions.map((s) => (
                     <button
                       key={s}
-                      onClick={() => send(s)}
+                      onClick={() => submit(s)}
                       className="rounded-lg border border-slate-200 px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-brand-300 hover:bg-brand-50"
                     >
                       {s}
@@ -177,7 +120,7 @@ export const AssistantPage = () => {
               </div>
             )}
 
-            {messages.map((m) => (
+            {chat.messages.map((m) => (
               <div
                 key={m.id}
                 className={`flex ${m.role === "USER" ? "justify-end" : "justify-start"}`}
@@ -199,7 +142,7 @@ export const AssistantPage = () => {
               </div>
             ))}
 
-            {thinking && (
+            {chat.thinking && (
               <div className="flex justify-start">
                 <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
                   <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600" />
@@ -211,16 +154,16 @@ export const AssistantPage = () => {
             <div ref={endRef} />
           </div>
 
-          {error && (
+          {chat.error && (
             <div className="mt-4">
-              <ErrorBox message={error} />
+              <ErrorBox message={chat.error} />
             </div>
           )}
 
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              send(question);
+              submit(question);
             }}
             className="mt-4 flex gap-2 border-t border-slate-100 pt-4"
           >
@@ -228,9 +171,9 @@ export const AssistantPage = () => {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="Ask about members, attendance, giving or the rota…"
-              disabled={thinking}
+              disabled={chat.thinking}
             />
-            <Button type="submit" disabled={thinking || !question.trim()}>
+            <Button type="submit" disabled={chat.thinking || !question.trim()}>
               Ask
             </Button>
           </form>

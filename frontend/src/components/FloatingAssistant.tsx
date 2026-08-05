@@ -1,0 +1,168 @@
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useAssistantChat } from "../hooks/useAssistantChat";
+import { useAuth } from "../context/AuthContext";
+import { getSuggestions } from "../lib/assistantSuggestions";
+import { Spinner } from "./ui";
+
+const TOOL_LABELS: Record<string, string> = {
+  search_members: "member directory",
+  get_attendance_summary: "attendance records",
+  get_giving_summary: "giving ledger",
+  get_upcoming_schedule: "volunteer schedule",
+  find_members_needing_follow_up: "follow-up list",
+  get_church_overview: "church overview",
+};
+
+/**
+ * A quick-question chat bubble mounted once in the shared Layout, so it's
+ * available on every authenticated page without navigating away. Deliberately
+ * lighter than the full /assistant page — no conversation history browser,
+ * just "ask a thing, get an answer" with a link across for the full view.
+ */
+export const FloatingAssistant = () => {
+  const chat = useAssistantChat();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { can } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [question, setQuestion] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+
+  const suggestions = getSuggestions(location.pathname, can("FINANCE"));
+
+  useEffect(() => {
+    if (open) endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat.messages, chat.thinking, open]);
+
+  const submit = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setQuestion("");
+    void chat.send(trimmed);
+  };
+
+  return (
+    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
+      {open && (
+        <div className="flex h-[28rem] w-80 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl sm:w-96">
+          <header className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">AI Assistant</p>
+              <p className="text-xs text-slate-500">Ask about your data</p>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => navigate("/assistant")}
+                className="rounded p-1.5 text-xs text-slate-500 hover:bg-slate-100"
+                title="Open full page"
+              >
+                ⤢
+              </button>
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Close"
+                className="rounded p-1.5 text-slate-500 hover:bg-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+          </header>
+
+          {chat.statusLoading ? (
+            <div className="flex flex-1 items-center justify-center">
+              <Spinner label="Checking" />
+            </div>
+          ) : chat.enabled === false ? (
+            <div className="flex flex-1 items-center justify-center px-5 text-center">
+              <p className="text-sm text-slate-500">{chat.statusMessage}</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+                {chat.messages.length === 0 && !chat.thinking && (
+                  <div className="pt-3">
+                    <p className="text-center text-sm text-slate-500">Try asking:</p>
+                    <div className="mt-3 flex flex-col gap-1.5">
+                      {suggestions.map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => submit(s)}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs leading-snug text-slate-700 transition hover:border-brand-300 hover:bg-brand-50"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {chat.messages.map((m) => (
+                  <div key={m.id} className={`flex ${m.role === "USER" ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
+                        m.role === "USER"
+                          ? "bg-brand-600 text-white"
+                          : "border border-slate-200 bg-white text-slate-800"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{m.content}</p>
+                      {m.role === "ASSISTANT" && m.toolsUsed.length > 0 && (
+                        <p className="mt-1.5 border-t border-slate-100 pt-1.5 text-[11px] text-slate-400">
+                          Checked: {m.toolsUsed.map((t) => TOOL_LABELS[t] ?? t).join(", ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {chat.thinking && (
+                  <div className="flex justify-start">
+                    <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600" />
+                      Looking that up…
+                    </div>
+                  </div>
+                )}
+
+                {chat.error && <p className="text-xs text-red-600">{chat.error}</p>}
+                <div ref={endRef} />
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  submit(question);
+                }}
+                className="flex shrink-0 gap-2 border-t border-slate-100 p-3"
+              >
+                <input
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder="Ask a question…"
+                  disabled={chat.thinking}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50"
+                />
+                <button
+                  type="submit"
+                  disabled={chat.thinking || !question.trim()}
+                  className="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  Ask
+                </button>
+              </form>
+            </>
+          )}
+        </div>
+      )}
+
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-label={open ? "Close assistant" : "Open assistant"}
+        className="grid h-14 w-14 place-items-center rounded-full bg-brand-600 text-xl text-white shadow-lg transition hover:bg-brand-700"
+      >
+        {open ? "✕" : "✧"}
+      </button>
+    </div>
+  );
+};

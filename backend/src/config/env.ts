@@ -10,8 +10,8 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
-  ANTHROPIC_API_KEY: z.string().optional().default(""),
-  ANTHROPIC_MODEL: z.string().default("claude-opus-5"),
+  GROQ_API_KEY: z.string().optional().default(""),
+  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -28,4 +28,4 @@ if (!parsed.success) {
 export const env = parsed.data;
 
 /** The assistant module degrades gracefully when no key is configured. */
-export const assistantEnabled = env.ANTHROPIC_API_KEY.length > 0;
+export const assistantEnabled = env.GROQ_API_KEY.length > 0;
