@@ -12,6 +12,16 @@ const schema = z.object({
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   GROQ_API_KEY: z.string().optional().default(""),
   GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
+
+  // Any standard SMTP provider works here (Gmail app password, Resend,
+  // SendGrid, ...). Leave blank in development — reset links are logged to
+  // the console instead of emailed, so the flow is still fully testable.
+  SMTP_HOST: z.string().optional().default(""),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_USER: z.string().optional().default(""),
+  SMTP_PASS: z.string().optional().default(""),
+  EMAIL_FROM: z.string().default("Church Management System <no-reply@church.local>"),
+  FRONTEND_URL: z.string().default("http://localhost:5173"),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -29,3 +39,6 @@ export const env = parsed.data;
 
 /** The assistant module degrades gracefully when no key is configured. */
 export const assistantEnabled = env.GROQ_API_KEY.length > 0;
+
+/** Without SMTP creds, password-reset links are logged instead of emailed. */
+export const emailEnabled = env.SMTP_HOST.length > 0 && env.SMTP_USER.length > 0;

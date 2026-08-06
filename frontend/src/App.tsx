@@ -5,6 +5,8 @@ import { Spinner } from "./components/ui";
 import type { Role } from "./lib/types";
 
 import { LoginPage } from "./pages/LoginPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { MembersPage } from "./pages/MembersPage";
 import { MemberDetailPage } from "./pages/MemberDetailPage";
@@ -39,6 +41,8 @@ const RequireAuth = ({ roles, children }: { roles?: Role[]; children: React.Reac
 export const App = () => (
   <Routes>
     <Route path="/login" element={<LoginPage />} />
+    <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+    <Route path="/reset-password" element={<ResetPasswordPage />} />
 
     <Route
       element={

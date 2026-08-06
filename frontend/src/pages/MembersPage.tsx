@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, downloadCsv, type Paginated } from "../lib/api";
+import { api, downloadFile, type Paginated } from "../lib/api";
 import { useApi, useDebounced } from "../hooks/useApi";
 import { useAuth } from "../context/AuthContext";
 import { fmtDate, fullName, initials } from "../lib/format";
@@ -68,7 +68,7 @@ export const MembersPage = () => {
               <Button
                 variant="secondary"
                 onClick={() =>
-                  downloadCsv("/members/export", {
+                  downloadFile("/members/export", {
                     search: debouncedSearch,
                     isActive: status,
                     departmentId,

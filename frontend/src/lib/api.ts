@@ -78,8 +78,12 @@ export const api = async <T>(path: string, options: RequestOptions = {}): Promis
   return (await response.json()) as T;
 };
 
-/** Downloads a CSV export with the auth header attached. */
-export const downloadCsv = async (path: string, query?: RequestOptions["query"]) => {
+/** Downloads any file export (CSV, PDF, ...) with the auth header attached. */
+export const downloadFile = async (
+  path: string,
+  query?: RequestOptions["query"],
+  fallbackName = "export",
+) => {
   const token = tokenStore.get();
   const response = await fetch(buildUrl(path, query), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -88,7 +92,7 @@ export const downloadCsv = async (path: string, query?: RequestOptions["query"])
 
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
-  const filename = /filename="?([^";]+)"?/.exec(disposition)?.[1] ?? "export.csv";
+  const filename = /filename="?([^";]+)"?/.exec(disposition)?.[1] ?? fallbackName;
 
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, ApiError, downloadCsv, type Paginated } from "../lib/api";
+import { api, ApiError, downloadFile, type Paginated } from "../lib/api";
 import { useApi, useDebounced } from "../hooks/useApi";
 import { fmtDate, fmtMoney, fullName, titleCase, toDateInput } from "../lib/format";
 import {
@@ -192,7 +192,7 @@ export const ContributionsPage = () => {
         subtitle="The giving ledger. Recording only — the system does not process payments."
         actions={
           <>
-            <Button variant="secondary" onClick={() => downloadCsv("/contributions/export", query)}>
+            <Button variant="secondary" onClick={() => downloadFile("/contributions/export", query)}>
               Export CSV
             </Button>
             <Button onClick={() => setCreating(true)}>Record contribution</Button>

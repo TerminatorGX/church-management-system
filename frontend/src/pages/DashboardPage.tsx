@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, downloadFile } from "../lib/api";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../context/AuthContext";
 import { fmtDate, fmtMoney } from "../lib/format";
@@ -14,7 +14,7 @@ import {
   type CoveragePoint,
   type GrowthPoint,
 } from "../components/charts";
-import { Badge, Card, EmptyState, ErrorBox, PageHeader, Select, Spinner, Table, Td, Th } from "../components/ui";
+import { Badge, Button, Card, EmptyState, ErrorBox, PageHeader, Select, Spinner, Table, Td, Th } from "../components/ui";
 import type { DashboardSummary } from "../lib/types";
 
 const StatTile = ({
@@ -46,7 +46,17 @@ const StatTile = ({
 export const DashboardPage = () => {
   const { user, can } = useAuth();
   const [months, setMonths] = useState(6);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const seesFinance = can("FINANCE");
+
+  const downloadReport = async () => {
+    setDownloadingPdf(true);
+    try {
+      await downloadFile("/dashboard/report.pdf", { months }, "church-report.pdf");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   const summary = useApi(
     (signal) => api<{ data: DashboardSummary }>("/dashboard/summary", { signal }),
@@ -109,11 +119,16 @@ export const DashboardPage = () => {
         title={`Good day, ${user?.name.split(" ")[0] ?? "there"}`}
         subtitle="A snapshot of the congregation right now."
         actions={
-          <Select value={months} onChange={(e) => setMonths(Number(e.target.value))} className="w-44">
-            <option value={3}>Last 3 months</option>
-            <option value={6}>Last 6 months</option>
-            <option value={12}>Last 12 months</option>
-          </Select>
+          <>
+            <Select value={months} onChange={(e) => setMonths(Number(e.target.value))} className="w-44">
+              <option value={3}>Last 3 months</option>
+              <option value={6}>Last 6 months</option>
+              <option value={12}>Last 12 months</option>
+            </Select>
+            <Button variant="secondary" onClick={downloadReport} disabled={downloadingPdf}>
+              {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
+            </Button>
+          </>
         }
       />
 

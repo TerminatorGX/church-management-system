@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { ApiError } from "../lib/api";
 import { Button, Field, Input, Spinner } from "../components/ui";
@@ -79,6 +79,12 @@ export const LoginPage = () => {
           <Button type="submit" disabled={submitting} className="w-full">
             {submitting ? "Signing in…" : "Sign in"}
           </Button>
+
+          <p className="text-center text-sm">
+            <Link to="/forgot-password" className="text-brand-700 hover:underline">
+              Forgot password?
+            </Link>
+          </p>
         </form>
 
         <p className="mt-4 text-center text-xs text-slate-500">

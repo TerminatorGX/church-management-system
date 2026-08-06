@@ -1,15 +1,21 @@
+import { randomBytes, createHash } from "crypto";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
+import { env } from "../../config/env";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/async-handler";
 import { badRequest, unauthorized } from "../../lib/http-error";
 import { audit } from "../../lib/audit";
+import { sendPasswordResetEmail } from "../../lib/mailer";
 import { validate } from "../../middleware/validate";
 import { requireAuth, requireRole, signToken } from "../../middleware/auth";
 
 export const authRouter = Router();
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const hashToken = (raw: string) => createHash("sha256").update(raw).digest("hex");
 
 /** Brute-force protection on the only unauthenticated write endpoint. */
 const loginLimiter = rateLimit({
@@ -76,6 +82,104 @@ authRouter.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     res.json({ user: req.user });
+  }),
+);
+
+// --- Forgot / reset password ------------------------------------------------
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many reset requests. Try again in 15 minutes." },
+});
+
+const forgotPasswordSchema = z.object({ email: z.string().email() });
+
+/** Generic reply either way — confirming or denying an email exists is a user-enumeration leak. */
+const GENERIC_RESET_MESSAGE =
+  "If an account exists for that email, a password reset link has been sent.";
+
+authRouter.post(
+  "/forgot-password",
+  forgotPasswordLimiter,
+  validate(forgotPasswordSchema),
+  asyncHandler(async (req, res) => {
+    const { email } = req.body as z.infer<typeof forgotPasswordSchema>;
+
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+
+    if (user && user.isActive) {
+      const rawToken = randomBytes(32).toString("hex");
+
+      await prisma.$transaction([
+        // Only one live reset link per account at a time.
+        prisma.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } }),
+        prisma.passwordResetToken.create({
+          data: {
+            userId: user.id,
+            tokenHash: hashToken(rawToken),
+            expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+          },
+        }),
+      ]);
+
+      const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${rawToken}`;
+      try {
+        await sendPasswordResetEmail(user.email, user.name, resetUrl);
+      } catch (err) {
+        // The token is already stored — a delivery failure shouldn't change
+        // the response (that would leak whether the email existed), just log it.
+        console.error("[auth] failed to send password reset email:", err);
+      }
+    }
+
+    res.json({ message: GENERIC_RESET_MESSAGE });
+  }),
+);
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(8, "New password must be at least 8 characters"),
+});
+
+authRouter.post(
+  "/reset-password",
+  forgotPasswordLimiter,
+  validate(resetPasswordSchema),
+  asyncHandler(async (req, res) => {
+    const { token, newPassword } = req.body as z.infer<typeof resetPasswordSchema>;
+
+    const record = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash: hashToken(token) },
+      include: { user: true },
+    });
+
+    if (!record || record.usedAt || record.expiresAt < new Date()) {
+      throw badRequest("This reset link is invalid or has expired. Request a new one.");
+    }
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: record.userId },
+        data: { passwordHash: await bcrypt.hash(newPassword, 10) },
+      }),
+      // Using one reset link invalidates any others outstanding for the account.
+      prisma.passwordResetToken.updateMany({
+        where: { userId: record.userId, usedAt: null },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    audit(req, {
+      action: "UPDATE",
+      entity: "User",
+      entityId: record.userId,
+      summary: `${record.user.email} reset their password`,
+    });
+
+    res.json({ message: "Password reset. Sign in with your new password." });
   }),
 );
 
