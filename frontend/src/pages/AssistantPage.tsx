@@ -65,7 +65,7 @@ export const AssistantPage = () => {
         title="AI Assistant"
         subtitle="Ask questions about your congregation. Answers come from your own data, scoped to your role."
         actions={
-          <Button variant="secondary" onClick={chat.startNew}>
+          <Button variant="secondary" onClick={chat.startNew} disabled={chat.thinking}>
             New conversation
           </Button>
         }
@@ -82,7 +82,8 @@ export const AssistantPage = () => {
               <li key={c.id}>
                 <button
                   onClick={() => chat.openConversation(c.id)}
-                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
+                  disabled={chat.thinking}
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     c.id === chat.conversationId
                       ? "bg-brand-50 font-medium text-brand-700"
                       : "text-slate-600 hover:bg-slate-50"

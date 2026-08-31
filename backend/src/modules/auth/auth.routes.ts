@@ -160,10 +160,24 @@ authRouter.post(
       throw badRequest("This reset link is invalid or has expired. Request a new one.");
     }
 
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    // Atomically flip usedAt from null -> now. Postgres only lets one of two
+    // concurrent submissions of the same token win this update, so this is
+    // the actual single-use gate — the earlier check above is just for a
+    // fast, friendly rejection on the already-used/expired common case.
+    const claimed = await prisma.passwordResetToken.updateMany({
+      where: { id: record.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      throw badRequest("This reset link is invalid or has expired. Request a new one.");
+    }
+
     await prisma.$transaction([
       prisma.user.update({
         where: { id: record.userId },
-        data: { passwordHash: await bcrypt.hash(newPassword, 10) },
+        data: { passwordHash },
       }),
       // Using one reset link invalidates any others outstanding for the account.
       prisma.passwordResetToken.updateMany({

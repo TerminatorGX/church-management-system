@@ -11,7 +11,7 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   GROQ_API_KEY: z.string().optional().default(""),
-  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
+  GROQ_MODEL: z.string().default("openai/gpt-oss-20b"),
 
   // Any standard SMTP provider works here (Gmail app password, Resend,
   // SendGrid, ...). Leave blank in development — reset links are logged to

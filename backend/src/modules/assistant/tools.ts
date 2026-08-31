@@ -108,7 +108,107 @@ export const toolDefinitions: ChatCompletionTool[] = [
       parameters: { type: "object", properties: {} },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_fund_details",
+      description:
+        "Funds with their description, active status, and total given to each over a " +
+        "period (up to 5 years back). FINANCE and ADMIN only. Call this for questions " +
+        "about what funds exist, a specific fund's total, or a fund's description.",
+      parameters: {
+        type: "object",
+        properties: {
+          months: { type: "integer", description: "How many months back to total, 1-60 (default 12)" },
+          fundName: { type: "string", description: "Restrict to a single fund by name" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_member_profile",
+      description:
+        "One specific member's full profile: contact details, family, departments, " +
+        "attendance rate and recent volunteering over a period (giving totals included " +
+        "only for FINANCE/ADMIN callers). Call this when the user asks about one named " +
+        "person in depth, not a list of people.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Name, phone, or email to find the member" },
+          months: { type: "integer", description: "How many months back for attendance/giving, 1-24 (default 6)" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_families",
+      description:
+        "Find a household by family name and list its members and contact details. " +
+        "Call this when the user asks about a specific family.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Family name or partial name" },
+          limit: { type: "integer", description: "Max families, 1-20 (default 5)" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_department_roster",
+      description:
+        "A department/ministry's leader and active members with their role titles. " +
+        "Call this for questions about who's in a team or who leads it.",
+      parameters: {
+        type: "object",
+        properties: {
+          departmentName: { type: "string", description: "Department/ministry name" },
+        },
+        required: ["departmentName"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_past_events",
+      description:
+        "Recently held events (not upcoming), with attendance and volunteer counts, " +
+        "up to 12 months back. Call this for questions about what happened at a past " +
+        "service or event.",
+      parameters: {
+        type: "object",
+        properties: {
+          months: { type: "integer", description: "How many months back to look, 1-12 (default 3)" },
+          eventType: {
+            type: "string",
+            description:
+              "Filter by type: SUNDAY_SERVICE, MIDWEEK_SERVICE, SMALL_GROUP, SPECIAL_EVENT, OUTREACH, CONFERENCE",
+          },
+          limit: { type: "integer", description: "Max events, 1-30 (default 10)" },
+        },
+      },
+    },
+  },
 ];
+
+const eventTypes = [
+  "SUNDAY_SERVICE",
+  "MIDWEEK_SERVICE",
+  "SMALL_GROUP",
+  "SPECIAL_EVENT",
+  "OUTREACH",
+  "CONFERENCE",
+] as const;
 
 const monthsAgo = (n: number) => {
   const d = new Date();
@@ -120,6 +220,33 @@ const monthsAgo = (n: number) => {
 const clamp = (v: unknown, min: number, max: number, fallback: number) => {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.trunc(n))) : fallback;
+};
+
+/**
+ * A plain `contains` on firstName/lastName misses "Chintu Lungu" entirely,
+ * since neither field alone contains the full two-word query. For a
+ * multi-word query, also require every word to match firstName OR lastName
+ * (in either order), on top of the plain single-field contains checks.
+ */
+const nameSearchFilter = (q: string): Prisma.MemberWhereInput["OR"] => {
+  const fields: Prisma.MemberWhereInput[] = [
+    { firstName: { contains: q, mode: "insensitive" } },
+    { lastName: { contains: q, mode: "insensitive" } },
+    { email: { contains: q, mode: "insensitive" } },
+    { phone: { contains: q } },
+  ];
+  const words = q.split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    fields.push({
+      AND: words.map((w) => ({
+        OR: [
+          { firstName: { contains: w, mode: "insensitive" } },
+          { lastName: { contains: w, mode: "insensitive" } },
+        ],
+      })),
+    });
+  }
+  return fields;
 };
 
 type ToolInput = Record<string, unknown>;
@@ -143,21 +270,12 @@ export const runTool = async (
                 departmentMemberships: {
                   some: {
                     isActive: true,
-                    department: { name: { equals: input.departmentName, mode: "insensitive" } },
+                    department: { name: { contains: input.departmentName, mode: "insensitive" } },
                   },
                 },
               }
             : {}),
-          ...(q
-            ? {
-                OR: [
-                  { firstName: { contains: q, mode: "insensitive" } },
-                  { lastName: { contains: q, mode: "insensitive" } },
-                  { email: { contains: q, mode: "insensitive" } },
-                  { phone: { contains: q } },
-                ],
-              }
-            : {}),
+          ...(q ? { OR: nameSearchFilter(q) } : {}),
         },
         take: clamp(input.limit, 1, 50, 20),
         orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -242,7 +360,7 @@ export const runTool = async (
       const where: Prisma.ContributionWhereInput = {
         receivedOn: { gte: since },
         ...(typeof input.fundName === "string" && input.fundName
-          ? { fund: { name: { equals: input.fundName, mode: "insensitive" } } }
+          ? { fund: { name: { contains: input.fundName, mode: "insensitive" } } }
           : {}),
       };
 
@@ -366,6 +484,235 @@ export const runTool = async (
         ]);
 
       return { activeMembers, families, departments, upcomingEvents, newMembersThisMonth: newThisMonth };
+    }
+
+    case "get_fund_details": {
+      if (!canSeeFinance(user)) {
+        return {
+          error:
+            "Access denied. Fund data is restricted to the ADMIN and FINANCE roles. " +
+            "Tell the user their role does not permit viewing fund information.",
+        };
+      }
+
+      const months = clamp(input.months, 1, 60, 12);
+      const since = monthsAgo(months - 1);
+
+      const funds = await prisma.fund.findMany({
+        where:
+          typeof input.fundName === "string" && input.fundName
+            ? { name: { contains: input.fundName, mode: "insensitive" } }
+            : undefined,
+        orderBy: { name: "asc" },
+        select: {
+          name: true,
+          description: true,
+          isActive: true,
+          contributions: { where: { receivedOn: { gte: since } }, select: { amount: true } },
+        },
+      });
+
+      return {
+        periodMonths: months,
+        currency: "ZMW",
+        funds: funds.map((f) => ({
+          name: f.name,
+          description: f.description,
+          active: f.isActive,
+          totalInPeriod: f.contributions
+            .reduce((sum, c) => sum.plus(c.amount), new Prisma.Decimal(0))
+            .toString(),
+          contributionCount: f.contributions.length,
+        })),
+      };
+    }
+
+    case "get_member_profile": {
+      const q = typeof input.query === "string" ? input.query.trim() : "";
+      if (!q) return { error: "A name, phone, or email is required." };
+
+      const months = clamp(input.months, 1, 24, 6);
+      const since = monthsAgo(months - 1);
+
+      const member = await prisma.member.findFirst({
+        where: { OR: nameSearchFilter(q) },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          email: true,
+          isActive: true,
+          family: { select: { familyName: true } },
+          departmentMemberships: {
+            where: { isActive: true },
+            select: { roleTitle: true, department: { select: { name: true } } },
+          },
+          attendances: {
+            where: { event: { startsAt: { gte: since } } },
+            select: { status: true },
+          },
+          volunteerAssignments: {
+            where: { event: { startsAt: { gte: since } } },
+            orderBy: { event: { startsAt: "desc" } },
+            take: 5,
+            select: {
+              status: true,
+              role: { select: { name: true } },
+              event: { select: { name: true, startsAt: true } },
+            },
+          },
+        },
+      });
+
+      if (!member) return { error: "No member found matching that name, phone, or email." };
+
+      const attended = member.attendances.filter(
+        (a) => a.status === "PRESENT" || a.status === "LATE",
+      ).length;
+      const attendanceRatePercent = member.attendances.length
+        ? Math.round((attended / member.attendances.length) * 100)
+        : null;
+
+      const result: Record<string, unknown> = {
+        name: `${member.firstName} ${member.lastName}`,
+        phone: member.phone,
+        email: member.email,
+        active: member.isActive,
+        family: member.family?.familyName ?? null,
+        departments: member.departmentMemberships.map((d) => ({
+          name: d.department.name,
+          role: d.roleTitle,
+        })),
+        periodMonths: months,
+        attendanceRatePercent,
+        recentVolunteering: member.volunteerAssignments.map((a) => ({
+          event: a.event.name,
+          date: a.event.startsAt.toISOString().slice(0, 10),
+          role: a.role.name,
+          status: a.status,
+        })),
+      };
+
+      if (canSeeFinance(user)) {
+        const giving = await prisma.contribution.aggregate({
+          where: { memberId: member.id, receivedOn: { gte: since } },
+          _sum: { amount: true },
+        });
+        result.givingTotalInPeriod = (giving._sum.amount ?? new Prisma.Decimal(0)).toString();
+      }
+
+      return result;
+    }
+
+    case "search_families": {
+      const q = typeof input.query === "string" ? input.query.trim() : "";
+      if (!q) return { error: "A family name is required." };
+
+      const families = await prisma.family.findMany({
+        where: { familyName: { contains: q, mode: "insensitive" } },
+        take: clamp(input.limit, 1, 20, 5),
+        orderBy: { familyName: "asc" },
+        select: {
+          familyName: true,
+          address: true,
+          city: true,
+          phone: true,
+          members: {
+            select: { firstName: true, lastName: true, isFamilyHead: true, isActive: true },
+          },
+        },
+      });
+
+      return {
+        count: families.length,
+        families: families.map((f) => ({
+          name: f.familyName,
+          address: f.address,
+          city: f.city,
+          phone: f.phone,
+          members: f.members.map((m) => ({
+            name: `${m.firstName} ${m.lastName}`,
+            head: m.isFamilyHead,
+            active: m.isActive,
+          })),
+        })),
+      };
+    }
+
+    case "get_department_roster": {
+      const name = typeof input.departmentName === "string" ? input.departmentName.trim() : "";
+      if (!name) return { error: "A department name is required." };
+
+      const department = await prisma.department.findFirst({
+        where: { name: { contains: name, mode: "insensitive" } },
+        select: {
+          name: true,
+          description: true,
+          isActive: true,
+          leader: { select: { name: true } },
+          members: {
+            where: { isActive: true },
+            select: { roleTitle: true, member: { select: { firstName: true, lastName: true } } },
+          },
+        },
+      });
+
+      if (!department) return { error: `No department found named "${name}".` };
+
+      return {
+        name: department.name,
+        description: department.description,
+        active: department.isActive,
+        leader: department.leader?.name ?? null,
+        memberCount: department.members.length,
+        members: department.members.map((m) => ({
+          name: `${m.member.firstName} ${m.member.lastName}`,
+          role: m.roleTitle,
+        })),
+      };
+    }
+
+    case "get_past_events": {
+      const months = clamp(input.months, 1, 12, 3);
+      const requestedType = typeof input.eventType === "string" ? input.eventType.toUpperCase() : "";
+      const eventType = (eventTypes as readonly string[]).includes(requestedType)
+        ? (requestedType as (typeof eventTypes)[number])
+        : undefined;
+
+      const events = await prisma.event.findMany({
+        where: {
+          startsAt: { gte: monthsAgo(months - 1), lt: new Date() },
+          ...(eventType ? { type: eventType } : {}),
+        },
+        orderBy: { startsAt: "desc" },
+        take: clamp(input.limit, 1, 30, 10),
+        select: {
+          name: true,
+          type: true,
+          startsAt: true,
+          location: true,
+          _count: {
+            select: {
+              attendances: { where: { status: { in: ["PRESENT", "LATE"] } } },
+              assignments: true,
+            },
+          },
+        },
+      });
+
+      return {
+        periodMonths: months,
+        count: events.length,
+        events: events.map((e) => ({
+          name: e.name,
+          type: e.type,
+          date: e.startsAt.toISOString().slice(0, 10),
+          location: e.location,
+          attendance: e._count.attendances,
+          volunteers: e._count.assignments,
+        })),
+      };
     }
 
     default:

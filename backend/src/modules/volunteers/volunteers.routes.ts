@@ -158,18 +158,30 @@ volunteersRouter.post(
       );
     }
 
-    const assignment = await prisma.volunteerAssignment.create({
-      data: {
-        ...body,
-        serviceHours: body.serviceHours == null ? null : new Prisma.Decimal(body.serviceHours.toFixed(2)),
-        createdById: req.user!.id,
-      },
-      include: {
-        member: { select: { id: true, firstName: true, lastName: true } },
-        event: { select: { id: true, name: true, startsAt: true } },
-        role: { select: { id: true, name: true } },
-      },
-    });
+    // The check above is a friendly fast-path; the real guarantee against two
+    // concurrent requests double-booking the same member+event across
+    // different roles is a partial unique index at the database level (see
+    // migration 20260825144227_volunteer_no_double_booking).
+    let assignment;
+    try {
+      assignment = await prisma.volunteerAssignment.create({
+        data: {
+          ...body,
+          serviceHours: body.serviceHours == null ? null : new Prisma.Decimal(body.serviceHours.toFixed(2)),
+          createdById: req.user!.id,
+        },
+        include: {
+          member: { select: { id: true, firstName: true, lastName: true } },
+          event: { select: { id: true, name: true, startsAt: true } },
+          role: { select: { id: true, name: true } },
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw conflict("This member is already scheduled for this event.");
+      }
+      throw err;
+    }
 
     audit(req, {
       action: "CREATE",
@@ -188,19 +200,30 @@ volunteersRouter.patch(
   validate(assignmentBody.partial()),
   asyncHandler(async (req, res) => {
     const body = req.body as Partial<z.infer<typeof assignmentBody>>;
-    const assignment = await prisma.volunteerAssignment.update({
-      where: { id: req.params.id! },
-      data: {
-        ...body,
-        ...(body.serviceHours === undefined
-          ? {}
-          : { serviceHours: body.serviceHours == null ? null : new Prisma.Decimal(body.serviceHours.toFixed(2)) }),
-      },
-      include: {
-        member: { select: { firstName: true, lastName: true } },
-        role: { select: { name: true } },
-      },
-    });
+    let assignment;
+    try {
+      assignment = await prisma.volunteerAssignment.update({
+        where: { id: req.params.id! },
+        data: {
+          ...body,
+          ...(body.serviceHours === undefined
+            ? {}
+            : { serviceHours: body.serviceHours == null ? null : new Prisma.Decimal(body.serviceHours.toFixed(2)) }),
+        },
+        include: {
+          member: { select: { firstName: true, lastName: true } },
+          role: { select: { name: true } },
+        },
+      });
+    } catch (err) {
+      // Re-activating (e.g. status DECLINED -> CONFIRMED) can collide with the
+      // "one active assignment per member per event" constraint if they've
+      // since been booked into a different role for the same event.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw conflict("This member already has another active assignment for this event.");
+      }
+      throw err;
+    }
     audit(req, { action: "UPDATE", entity: "VolunteerAssignment", entityId: assignment.id });
     res.json({ data: assignment });
   }),

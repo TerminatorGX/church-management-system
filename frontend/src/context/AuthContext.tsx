@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { api, setUnauthorizedHandler, tokenStore } from "../lib/api";
+import { api, ApiError, setUnauthorizedHandler, tokenStore } from "../lib/api";
 import type { Role, User } from "../lib/types";
 
 interface AuthValue {
@@ -35,7 +35,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     api<{ user: User }>("/auth/me")
       .then((res) => setUser(res.user))
-      .catch(() => tokenStore.clear())
+      .catch((err) => {
+        // A real 401 already clears the token via the shared handler in
+        // api.ts. Anything else — the dev server mid-restart, a dropped
+        // connection, a Supabase blip — is not proof the token is invalid,
+        // so leave it in place instead of forcing an unnecessary re-login.
+        if (err instanceof ApiError && err.status === 401) return;
+      })
       .finally(() => setLoading(false));
   }, []);
 

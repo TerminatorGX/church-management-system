@@ -371,6 +371,12 @@ model VolunteerAssignment {
   @@unique([memberId, eventId, roleId])
   @@index([eventId, status])
   @@index([memberId])
+  // Also DB-enforced: at most one active (non-DECLINED/CANCELLED) assignment
+  // per member per event, regardless of role — a partial unique index that
+  // Prisma's schema DSL can't express, added by hand in migration
+  // 20260825144227_volunteer_no_double_booking. Keep it in mind before
+  // running `prisma migrate dev` against this model — it won't see this
+  // constraint and may propose dropping it.
 }
 
 // ---------------------------------------------------------------------------

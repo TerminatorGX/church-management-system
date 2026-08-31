@@ -39,7 +39,7 @@ kiosks, multi-language support, and full double-entry accounting.
 | Database  | PostgreSQL via Prisma ORM, with row-level security enabled     |
 | Auth      | JWT + bcrypt, email-based password reset (Nodemailer, any SMTP)|
 | PDF       | pdfkit (dashboard report export)                                |
-| AI        | Groq API — `llama-3.3-70b-versatile` (tool use over your own data), free tier |
+| AI        | Groq API — `openai/gpt-oss-20b` (tool use over your own data), free tier. Configurable via `GROQ_MODEL`; Groq periodically retires models, so check `GET https://api.groq.com/openai/v1/models` if the assistant starts erroring with `model_not_found`. |
 | Testing   | Vitest + Supertest (backend), Vitest + React Testing Library (frontend) |
 
 ## Getting started
@@ -173,7 +173,7 @@ loses cents, which is unacceptable in a ledger a church has to account for.
 attendance and contribution records, so financial reporting for past years stays
 correct. Funds with contributions cannot be deleted at all.
 
-**The AI assistant only reads.** It has six read-only query tools and re-checks
+**The AI assistant only reads.** It has eleven read-only query tools and re-checks
 the caller's role inside each one, so a department head cannot reach giving data
 by asking the assistant instead of using the UI. It runs on Groq's free tier —
 rate limiting is deliberately conservative (an app-wide cap, not per-user,

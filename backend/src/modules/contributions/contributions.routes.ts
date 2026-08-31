@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/async-handler";
-import { notFound } from "../../lib/http-error";
+import { badRequest, notFound } from "../../lib/http-error";
 import { audit } from "../../lib/audit";
 import { validate } from "../../middleware/validate";
 import { requireAuth, requireFinance, requireRole } from "../../middleware/auth";
@@ -182,18 +182,34 @@ contributionsRouter.post(
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof contributionBody>;
 
-    const contribution = await prisma.contribution.create({
-      data: {
-        ...body,
-        memberId: body.memberId ?? null,
-        receiptNumber: await nextReceiptNumber(body.receivedOn),
-        recordedById: req.user!.id,
-      },
-      include: {
-        fund: { select: { id: true, name: true } },
-        member: { select: { id: true, firstName: true, lastName: true } },
-      },
-    });
+    // Two people recording at the same instant can both compute the same
+    // "next" receipt number; the unique constraint turns the loser's insert
+    // into a P2002 rather than a silent duplicate, so retry with a freshly
+    // computed number instead of surfacing that as a confusing user-facing error.
+    let contribution;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        contribution = await prisma.contribution.create({
+          data: {
+            ...body,
+            memberId: body.memberId ?? null,
+            receiptNumber: await nextReceiptNumber(body.receivedOn),
+            recordedById: req.user!.id,
+          },
+          include: {
+            fund: { select: { id: true, name: true } },
+            member: { select: { id: true, firstName: true, lastName: true } },
+          },
+        });
+        break;
+      } catch (err) {
+        const isReceiptClash =
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === "P2002" &&
+          (err.meta?.target as string[] | undefined)?.includes("receiptNumber");
+        if (!isReceiptClash || attempt >= 4) throw err;
+      }
+    }
 
     audit(req, {
       action: "CREATE",
@@ -214,9 +230,26 @@ contributionsRouter.patch(
   "/:id",
   validate(contributionBody.partial()),
   asyncHandler(async (req, res) => {
+    const body = req.body as Partial<z.infer<typeof contributionBody>>;
+
+    if (body.receivedOn) {
+      const existing = await prisma.contribution.findUnique({
+        where: { id: req.params.id! },
+        select: { receiptNumber: true },
+      });
+      if (!existing) throw notFound("Contribution not found");
+      const receiptYear = existing.receiptNumber.split("-")[1];
+      const newYear = String(body.receivedOn.getUTCFullYear());
+      if (receiptYear !== newYear) {
+        throw badRequest(
+          `Can't move this contribution into ${newYear} — receipt ${existing.receiptNumber} is filed under ${receiptYear}. Void it and record a new contribution instead.`,
+        );
+      }
+    }
+
     const contribution = await prisma.contribution.update({
       where: { id: req.params.id! },
-      data: req.body as Partial<z.infer<typeof contributionBody>>,
+      data: body,
       include: { fund: { select: { name: true } } },
     });
     audit(req, {
