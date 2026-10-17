@@ -3,11 +3,12 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/async-handler";
-import { badRequest, conflict } from "../../lib/http-error";
+import { badRequest, conflict, forbidden, notFound } from "../../lib/http-error";
 import { audit } from "../../lib/audit";
 import { validate } from "../../middleware/validate";
 import { requireAuth, requireRole, requireStaff } from "../../middleware/auth";
 import { paginated, paginationSchema, toSkipTake } from "../../lib/pagination";
+import { ageOn } from "../../lib/dates";
 
 export const volunteersRouter = Router();
 volunteersRouter.use(requireAuth);
@@ -20,6 +21,11 @@ const roleBody = z.object({
   name: z.string().min(1, "Role name is required"),
   description: z.string().nullish(),
   isActive: z.boolean().default(true),
+  /// Independent safeguarding factors — a role can require either, both, or
+  /// neither. See Member.safeguardingCleared for why clearance exists
+  /// alongside age rather than age alone.
+  minimumAge: z.coerce.number().int().min(0).max(120).nullish(),
+  requiresSafeguardingClearance: z.boolean().default(false),
 });
 
 volunteersRouter.get(
@@ -133,12 +139,71 @@ volunteersRouter.get(
   }),
 );
 
+/**
+ * Two independent, combinable gates — a role can require a minimum age, a
+ * safeguarding clearance, both, or neither. Age alone is a blunt proxy for
+ * trustworthiness (an unvetted adult is no safer with children than a
+ * mature teen), so clearance exists as a separate, fairer factor rather
+ * than just raising the age bar.
+ */
+const isSafeguardingEligible = (
+  member: { dateOfBirth: Date | null; safeguardingCleared: boolean },
+  role: { minimumAge: number | null; requiresSafeguardingClearance: boolean },
+) => {
+  if (role.requiresSafeguardingClearance && !member.safeguardingCleared) return false;
+  if (role.minimumAge != null) {
+    if (!member.dateOfBirth) return false;
+    if (ageOn(member.dateOfBirth) < role.minimumAge) return false;
+  }
+  return true;
+};
+
+/** Same check as `isSafeguardingEligible`, but with a specific reason for the 403. */
+const assertSafeguardingEligible = (
+  member: { firstName: string; lastName: string; dateOfBirth: Date | null; safeguardingCleared: boolean },
+  role: { name: string; minimumAge: number | null; requiresSafeguardingClearance: boolean },
+) => {
+  const name = `${member.firstName} ${member.lastName}`;
+
+  if (role.requiresSafeguardingClearance && !member.safeguardingCleared) {
+    throw forbidden(
+      `${name} hasn't completed safeguarding clearance yet, which "${role.name}" requires. Clear them on their member profile first.`,
+    );
+  }
+
+  if (role.minimumAge != null) {
+    if (!member.dateOfBirth) {
+      throw forbidden(
+        `"${role.name}" requires volunteers to be at least ${role.minimumAge} — ${name}'s date of birth isn't on file, so that can't be confirmed. Add it before assigning this role.`,
+      );
+    }
+    const age = ageOn(member.dateOfBirth);
+    if (age < role.minimumAge) {
+      throw forbidden(`"${role.name}" requires volunteers to be at least ${role.minimumAge}. ${name} is ${age}.`);
+    }
+  }
+};
+
 volunteersRouter.post(
   "/assignments",
   requireStaff,
   validate(assignmentBody),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof assignmentBody>;
+
+    const [member, role] = await Promise.all([
+      prisma.member.findUnique({
+        where: { id: body.memberId },
+        select: { firstName: true, lastName: true, dateOfBirth: true, safeguardingCleared: true },
+      }),
+      prisma.volunteerRole.findUnique({
+        where: { id: body.roleId },
+        select: { name: true, minimumAge: true, requiresSafeguardingClearance: true },
+      }),
+    ]);
+    if (!member) throw notFound("Member not found");
+    if (!role) throw notFound("Volunteer role not found");
+    assertSafeguardingEligible(member, role);
 
     // Double-booking a volunteer across two roles at the same event is the
     // scheduling mistake this module exists to prevent, and the (member,
@@ -200,6 +265,31 @@ volunteersRouter.patch(
   validate(assignmentBody.partial()),
   asyncHandler(async (req, res) => {
     const body = req.body as Partial<z.infer<typeof assignmentBody>>;
+
+    // Only re-check eligibility when the member or role is actually changing —
+    // re-deriving the full effective pair only in that case.
+    if (body.memberId !== undefined || body.roleId !== undefined) {
+      const current = await prisma.volunteerAssignment.findUnique({
+        where: { id: req.params.id! },
+        select: { memberId: true, roleId: true },
+      });
+      if (!current) throw notFound("Assignment not found");
+
+      const [member, role] = await Promise.all([
+        prisma.member.findUnique({
+          where: { id: body.memberId ?? current.memberId },
+          select: { firstName: true, lastName: true, dateOfBirth: true, safeguardingCleared: true },
+        }),
+        prisma.volunteerRole.findUnique({
+          where: { id: body.roleId ?? current.roleId },
+          select: { name: true, minimumAge: true, requiresSafeguardingClearance: true },
+        }),
+      ]);
+      if (!member) throw notFound("Member not found");
+      if (!role) throw notFound("Volunteer role not found");
+      assertSafeguardingEligible(member, role);
+    }
+
     let assignment;
     try {
       assignment = await prisma.volunteerAssignment.update({
@@ -257,7 +347,7 @@ volunteersRouter.get(
       select: { memberId: true },
     });
 
-    const candidates = await prisma.member.findMany({
+    const allCandidates = await prisma.member.findMany({
       where: { isActive: true, id: { notIn: alreadyOn.map((a) => a.memberId) } },
       select: {
         id: true,
@@ -265,6 +355,8 @@ volunteersRouter.get(
         lastName: true,
         phone: true,
         skills: true,
+        dateOfBirth: true,
+        safeguardingCleared: true,
         volunteerAssignments: {
           where: { roleId },
           select: { id: true, createdAt: true },
@@ -273,6 +365,9 @@ volunteersRouter.get(
         },
       },
     });
+    // Suggesting someone who'd just get a 403 on assignment isn't useful —
+    // filter to who's actually eligible for this specific role.
+    const candidates = allCandidates.filter((m) => isSafeguardingEligible(m, role));
 
     const needle = role.name.toLowerCase();
     const ranked = candidates

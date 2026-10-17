@@ -52,4 +52,17 @@ describe("contributions", () => {
       .send({ amount: 0, fundId, receivedOn: new Date().toISOString().slice(0, 10) });
     expect(res.status).toBe(400);
   });
+
+  it("rejects a contribution dated in the future", async () => {
+    const token = await loginAs("finance@church.local");
+    const funds = await request(app).get("/api/funds").set(authHeader(token));
+    const fundId = funds.body.data[0]?.id;
+
+    const nextWeek = new Date(Date.now() + 7 * 86_400_000);
+    const res = await request(app)
+      .post("/api/contributions")
+      .set(authHeader(token))
+      .send({ amount: 10, fundId, receivedOn: nextWeek.toISOString().slice(0, 10) });
+    expect(res.status).toBe(400);
+  });
 });

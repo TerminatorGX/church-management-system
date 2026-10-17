@@ -9,32 +9,54 @@ import { validate } from "../../middleware/validate";
 import { requireAuth, requireRole, requireStaff } from "../../middleware/auth";
 import { paginated, paginationSchema, toSkipTake } from "../../lib/pagination";
 import { toCsv } from "../../lib/csv";
+import {
+  nameField,
+  normalizeZambianPhone,
+  optionalEmailField,
+  optionalZambianPhone,
+  pastOrPresentDate,
+} from "../../lib/validators";
 
 export const membersRouter = Router();
 membersRouter.use(requireAuth);
 
-const dateish = z.coerce.date().nullish();
-
-const memberBody = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email().nullish().or(z.literal("")),
-  phone: z.string().nullish(),
-  dateOfBirth: dateish,
+const memberFields = z.object({
+  firstName: nameField("First name"),
+  lastName: nameField("Last name"),
+  email: optionalEmailField,
+  phone: optionalZambianPhone,
+  dateOfBirth: pastOrPresentDate("Date of birth").nullish(),
   gender: z.enum(["MALE", "FEMALE", "UNSPECIFIED"]).default("UNSPECIFIED"),
   maritalStatus: z.enum(["SINGLE", "MARRIED", "WIDOWED", "DIVORCED", "UNSPECIFIED"]).default("UNSPECIFIED"),
-  baptismDate: dateish,
-  joinedDate: dateish,
-  address: z.string().nullish(),
-  city: z.string().nullish(),
-  occupation: z.string().nullish(),
-  notes: z.string().nullish(),
+  baptismDate: pastOrPresentDate("Baptism date").nullish(),
+  joinedDate: pastOrPresentDate("Joined date").nullish(),
+  address: z.string().trim().nullish(),
+  city: z.string().trim().nullish(),
+  province: z.string().trim().nullish(),
+  occupation: z.string().trim().nullish(),
+  notes: z.string().trim().nullish(),
   isActive: z.boolean().default(true),
-  skills: z.array(z.string().min(1)).default([]),
-  interests: z.array(z.string().min(1)).default([]),
+  skills: z.array(z.string().trim().min(1)).default([]),
+  interests: z.array(z.string().trim().min(1)).default([]),
   familyId: z.string().uuid().nullish(),
   isFamilyHead: z.boolean().default(false),
+  safeguardingCleared: z.boolean().default(false),
 });
+
+/** A baby can be baptised the day they're born, but not before. */
+const baptismNotBeforeBirth = (v: { dateOfBirth?: Date | null; baptismDate?: Date | null }) =>
+  !v.dateOfBirth || !v.baptismDate || v.baptismDate >= v.dateOfBirth;
+
+const BAPTISM_ORDER_ISSUE = {
+  message: "Baptism date can't be before the date of birth",
+  path: ["baptismDate"],
+};
+
+/** `.refine()` returns a ZodEffects, which has no `.partial()` — so the
+ *  partial variant is derived from the plain object and re-refined (same
+ *  pattern as events.routes.ts). */
+const memberBody = memberFields.refine(baptismNotBeforeBirth, BAPTISM_ORDER_ISSUE);
+const memberPatchBody = memberFields.partial().refine(baptismNotBeforeBirth, BAPTISM_ORDER_ISSUE);
 
 /** Empty-string email from a form means "no email", not an empty value. */
 const normalize = <T extends { email?: string | null }>(body: T) => ({
@@ -131,6 +153,7 @@ membersRouter.get(
       ["Joined", (m) => m.joinedDate?.toISOString().slice(0, 10)],
       ["Family", (m) => m.family?.familyName],
       ["City", (m) => m.city],
+      ["Province", (m) => m.province],
       ["Skills", (m) => m.skills.join("; ")],
       ["Active", (m) => (m.isActive ? "Yes" : "No")],
     ]);
@@ -139,6 +162,83 @@ membersRouter.get(
     res.header("Content-Type", "text/csv; charset=utf-8");
     res.attachment(`members-${new Date().toISOString().slice(0, 10)}.csv`);
     res.send(csv);
+  }),
+);
+
+const duplicateCheckQuery = z.object({
+  firstName: z.string().trim().optional(),
+  lastName: z.string().trim().optional(),
+  phone: z.string().trim().optional(),
+  email: z.string().trim().optional(),
+  excludeId: z.string().uuid().optional(),
+});
+
+/**
+ * Surfaces possible duplicates so a human can judge — it never blocks saving.
+ * Shared names are common (several "John Banda"s in one congregation is
+ * normal), so a name match alone is reported as a low-confidence "heads up",
+ * while a matching phone or email — much less likely to be shared — is
+ * reported as a stronger signal. The caller decides; this only shows the
+ * evidence (name, phone, email, DOB, family) a person needs to tell two
+ * same-named members apart.
+ */
+membersRouter.get(
+  "/possible-duplicates",
+  requireStaff,
+  validate(duplicateCheckQuery, "query"),
+  asyncHandler(async (req, res) => {
+    const q = req.query as unknown as z.infer<typeof duplicateCheckQuery>;
+    const hasName = Boolean(q.firstName && q.lastName);
+    // Stored numbers/emails are always normalised (see validators.ts) — a
+    // caller that sends "0971 234 567" or mixed-case email must be
+    // normalised the same way before an exact-match lookup can find it.
+    const phone = q.phone ? normalizeZambianPhone(q.phone) : null;
+    const email = q.email ? q.email.trim().toLowerCase() : null;
+
+    const or: Prisma.MemberWhereInput[] = [];
+    if (phone) or.push({ phone });
+    if (email) or.push({ email });
+    if (hasName) {
+      or.push({
+        firstName: { equals: q.firstName, mode: "insensitive" },
+        lastName: { equals: q.lastName, mode: "insensitive" },
+      });
+    }
+
+    if (or.length === 0) return res.json({ data: [] });
+
+    const candidates = await prisma.member.findMany({
+      where: {
+        OR: or,
+        ...(q.excludeId ? { id: { not: q.excludeId } } : {}),
+      },
+      take: 5,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        email: true,
+        dateOfBirth: true,
+        isActive: true,
+        family: { select: { familyName: true } },
+      },
+    });
+
+    res.json({
+      data: candidates.map((c) => ({
+        ...c,
+        matchedOn: [
+          phone && c.phone === phone ? "phone" : null,
+          email && c.email === email ? "email" : null,
+          hasName &&
+          c.firstName.toLowerCase() === q.firstName!.toLowerCase() &&
+          c.lastName.toLowerCase() === q.lastName!.toLowerCase()
+            ? "name"
+            : null,
+        ].filter((x): x is string => x !== null),
+      })),
+    });
   }),
 );
 
@@ -217,7 +317,7 @@ membersRouter.post(
 membersRouter.patch(
   "/:id",
   requireStaff,
-  validate(memberBody.partial()),
+  validate(memberPatchBody),
   asyncHandler(async (req, res) => {
     const body = normalize(req.body as Partial<z.infer<typeof memberBody>>);
     const member = await prisma.member.update({ where: { id: req.params.id! }, data: body });

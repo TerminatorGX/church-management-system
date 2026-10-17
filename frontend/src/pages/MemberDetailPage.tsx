@@ -94,6 +94,7 @@ export const MemberDetailPage = () => {
                   {m.isActive ? <Badge tone="green">Active</Badge> : <Badge>Archived</Badge>}
                   {m.isFamilyHead && <Badge tone="blue">Head of household</Badge>}
                   {m.user && <Badge tone="amber">Has a login ({m.user.role})</Badge>}
+                  {m.safeguardingCleared && <Badge tone="blue">Safeguarding cleared</Badge>}
                 </div>
               </div>
             </div>
@@ -117,7 +118,10 @@ export const MemberDetailPage = () => {
                   ) : null
                 }
               />
-              <Detail label="Address" value={[m.address, m.city].filter(Boolean).join(", ")} />
+              <Detail
+                label="Address"
+                value={[m.address, m.city, m.province].filter(Boolean).join(", ")}
+              />
             </dl>
 
             {(m.skills.length > 0 || m.interests.length > 0) && (

@@ -1,21 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { api } from "../lib/api";
 import { useApi } from "../hooks/useApi";
 import { useAssistantChat } from "../hooks/useAssistantChat";
 import { useAuth } from "../context/AuthContext";
 import { fmtRelative } from "../lib/format";
-import { getSuggestions } from "../lib/assistantSuggestions";
-import { Button, Card, ErrorBox, Input, PageHeader, Spinner } from "../components/ui";
+import { getSuggestions, TOOL_LABELS } from "../lib/assistantSuggestions";
+import { Button, Card, ChatBubble, ErrorBox, Input, PageHeader, Spinner, ThinkingBubble } from "../components/ui";
 import type { Conversation } from "../lib/types";
-
-const TOOL_LABELS: Record<string, string> = {
-  search_members: "member directory",
-  get_attendance_summary: "attendance records",
-  get_giving_summary: "giving ledger",
-  get_upcoming_schedule: "volunteer schedule",
-  find_members_needing_follow_up: "follow-up list",
-  get_church_overview: "church overview",
-};
 
 export const AssistantPage = () => {
   const { user, can } = useAuth();
@@ -103,7 +95,10 @@ export const AssistantPage = () => {
           <div className="flex-1 space-y-4 overflow-y-auto">
             {chat.messages.length === 0 && !chat.thinking && (
               <div className="py-8 text-center">
-                <p className="font-medium text-slate-800">
+                <span className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-brand-600 to-accent-500 text-white">
+                  <Sparkles size={20} />
+                </span>
+                <p className="font-display font-medium text-slate-800">
                   Hello {user?.name.split(" ")[0]} — what would you like to know?
                 </p>
                 <p className="mt-1 text-sm text-slate-500">Try one of these:</p>
@@ -122,35 +117,10 @@ export const AssistantPage = () => {
             )}
 
             {chat.messages.map((m) => (
-              <div
-                key={m.id}
-                className={`flex ${m.role === "USER" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
-                    m.role === "USER"
-                      ? "bg-brand-600 text-white"
-                      : "border border-slate-200 bg-white text-slate-800"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
-                  {m.role === "ASSISTANT" && m.toolsUsed.length > 0 && (
-                    <p className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-400">
-                      Checked: {m.toolsUsed.map((t) => TOOL_LABELS[t] ?? t).join(", ")}
-                    </p>
-                  )}
-                </div>
-              </div>
+              <ChatBubble key={m.id} message={m} toolLabel={(t) => TOOL_LABELS[t] ?? t} />
             ))}
 
-            {chat.thinking && (
-              <div className="flex justify-start">
-                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
-                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600" />
-                  Looking through your records…
-                </div>
-              </div>
-            )}
+            {chat.thinking && <ThinkingBubble label="Looking through your records…" />}
 
             <div ref={endRef} />
           </div>

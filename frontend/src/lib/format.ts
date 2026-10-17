@@ -55,6 +55,19 @@ export const titleCase = (value: string) =>
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 
+/**
+ * Reformats a typed name on blur so it displays the same way it'll be saved
+ * ("JOHN" / "john" -> "John") — the backend applies the same normalisation
+ * (see `backend/src/lib/validators.ts`) as the actual source of truth; this
+ * is just instant visual feedback instead of a reformat-on-reload surprise.
+ */
+export const titleCaseName = (value: string) =>
+  value
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .replace(/(^|[\s'-])([a-z])/g, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+
 export const initials = (first: string, last: string) =>
   `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
 

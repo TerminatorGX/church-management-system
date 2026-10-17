@@ -19,6 +19,7 @@ import { FundsPage } from "./pages/FundsPage";
 import { VolunteersPage } from "./pages/VolunteersPage";
 import { AssistantPage } from "./pages/AssistantPage";
 import { UsersPage } from "./pages/UsersPage";
+import { AuditLogPage } from "./pages/AuditLogPage";
 
 const RequireAuth = ({ roles, children }: { roles?: Role[]; children: React.ReactNode }) => {
   const { user, loading, can } = useAuth();
@@ -82,6 +83,14 @@ export const App = () => (
         element={
           <RequireAuth roles={[]}>
             <UsersPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="audit-log"
+        element={
+          <RequireAuth roles={[]}>
+            <AuditLogPage />
           </RequireAuth>
         }
       />

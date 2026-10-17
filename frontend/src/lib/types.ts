@@ -57,10 +57,12 @@ export interface Member {
   joinedDate: string | null;
   address: string | null;
   city: string | null;
+  province: string | null;
   occupation: string | null;
   notes: string | null;
   isActive: boolean;
   isFamilyHead: boolean;
+  safeguardingCleared: boolean;
   skills: string[];
   interests: string[];
   familyId: string | null;
@@ -85,6 +87,18 @@ export interface Member {
   user?: { id: string; email: string; role: Role } | null;
 }
 
+export interface PossibleDuplicateMember {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  email: string | null;
+  dateOfBirth: string | null;
+  isActive: boolean;
+  family: { familyName: string } | null;
+  matchedOn: ("name" | "phone" | "email")[];
+}
+
 export interface ChurchEvent {
   id: string;
   name: string;
@@ -94,6 +108,7 @@ export interface ChurchEvent {
   location: string | null;
   description: string | null;
   departmentId: string | null;
+  capacity: number | null;
   department?: { id: string; name: string } | null;
   _count?: { attendances: number; assignments: number };
   attendanceSummary?: Partial<Record<AttendanceStatus, number>>;
@@ -127,6 +142,8 @@ export interface VolunteerRole {
   name: string;
   description: string | null;
   isActive: boolean;
+  minimumAge: number | null;
+  requiresSafeguardingClearance: boolean;
   _count?: { assignments: number };
 }
 
@@ -181,4 +198,17 @@ export interface ChatMessage {
   content: string;
   toolsUsed: string[];
   createdAt: string;
+}
+
+export type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "LOGIN" | "EXPORT";
+
+export interface AuditLogEntry {
+  id: string;
+  action: AuditAction;
+  entity: string;
+  entityId: string | null;
+  summary: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  user: { id: string; name: string; email: string } | null;
 }

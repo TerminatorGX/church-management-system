@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { ApiError } from "../lib/api";
 import { Button, Field, Input, Spinner } from "../components/ui";
+import { AuthLayout } from "../components/AuthLayout";
 
 export const LoginPage = () => {
   const { user, loading, signIn } = useAuth();
@@ -35,64 +36,55 @@ export const LoginPage = () => {
   };
 
   return (
-    <div className="grid min-h-screen place-items-center bg-slate-50 p-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-brand-600 text-lg font-bold text-white">
-            C
-          </span>
-          <h1 className="text-xl font-semibold text-slate-900">Church Management System</h1>
-          <p className="mt-1 text-sm text-slate-500">Sign in to continue</p>
-        </div>
-
-        <form
-          onSubmit={submit}
-          className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-        >
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-              {error}
-            </div>
-          )}
-
-          <Field label="Email">
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="username"
-              required
-              autoFocus
-            />
-          </Field>
-
-          <Field label="Password">
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </Field>
-
-          <Button type="submit" disabled={submitting} className="w-full">
-            {submitting ? "Signing in…" : "Sign in"}
-          </Button>
-
-          <p className="text-center text-sm">
-            <Link to="/forgot-password" className="text-brand-700 hover:underline">
-              Forgot password?
-            </Link>
-          </p>
-        </form>
-
-        <p className="mt-4 text-center text-xs text-slate-500">
+    <AuthLayout
+      title="Church Management System"
+      subtitle="Sign in to continue"
+      footer={
+        <>
           Seeded demo accounts: admin@church.local, finance@church.local,
           <br />
           depthead@church.local, viewer@church.local
+        </>
+      }
+    >
+      <form onSubmit={submit} className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {error}
+          </div>
+        )}
+
+        <Field label="Email">
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="username"
+            required
+            autoFocus
+          />
+        </Field>
+
+        <Field label="Password">
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </Field>
+
+        <Button type="submit" disabled={submitting} className="w-full">
+          {submitting ? "Signing in…" : "Sign in"}
+        </Button>
+
+        <p className="text-center text-sm">
+          <Link to="/forgot-password" className="text-brand-700 hover:underline">
+            Forgot password?
+          </Link>
         </p>
-      </div>
-    </div>
+      </form>
+    </AuthLayout>
   );
 };

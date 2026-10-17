@@ -22,6 +22,9 @@ const eventFields = z.object({
   location: z.string().nullish(),
   description: z.string().nullish(),
   departmentId: z.string().uuid().nullish(),
+  /// Mainly for special events/conferences with limited seating — never a
+  /// hard cap on check-in, since attendance is recorded after the fact.
+  capacity: z.coerce.number().int().positive().max(1_000_000).nullish(),
 });
 
 /** `.refine()` returns a ZodEffects, which has no `.partial()` — so the

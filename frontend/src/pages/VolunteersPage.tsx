@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ShieldCheck } from "lucide-react";
 import { api, ApiError, type Paginated } from "../lib/api";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../context/AuthContext";
@@ -7,15 +8,18 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   EmptyState,
   ErrorBox,
   Field,
+  Input,
   Modal,
   PageHeader,
   Select,
   Spinner,
   Table,
   Td,
+  Textarea,
   Th,
 } from "../components/ui";
 import type { AssignmentStatus, ChurchEvent, VolunteerAssignment, VolunteerRole } from "../lib/types";
@@ -92,6 +96,8 @@ const AssignModal = ({
           {roles.map((r) => (
             <option key={r.id} value={r.id}>
               {r.name}
+              {r.minimumAge != null ? ` (${r.minimumAge}+)` : ""}
+              {r.requiresSafeguardingClearance ? " — clearance required" : ""}
             </option>
           ))}
         </Select>
@@ -142,12 +148,168 @@ const AssignModal = ({
   );
 };
 
+const RoleForm = ({
+  role,
+  onSaved,
+  onCancel,
+}: {
+  role?: VolunteerRole;
+  onSaved: () => void;
+  onCancel: () => void;
+}) => {
+  const [form, setForm] = useState({
+    name: role?.name ?? "",
+    description: role?.description ?? "",
+    minimumAge: role?.minimumAge != null ? String(role.minimumAge) : "",
+    requiresSafeguardingClearance: role?.requiresSafeguardingClearance ?? false,
+    isActive: role?.isActive ?? true,
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      await api(role ? `/volunteers/roles/${role.id}` : "/volunteers/roles", {
+        method: role ? "PATCH" : "POST",
+        body: {
+          ...form,
+          description: form.description || null,
+          minimumAge: form.minimumAge ? Number(form.minimumAge) : null,
+        },
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save the role.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </div>
+      )}
+      <Field label="Role name">
+        <Input value={form.name} onChange={(e) => set("name", e.target.value)} required autoFocus />
+      </Field>
+      <Field label="Description">
+        <Textarea value={form.description} onChange={(e) => set("description", e.target.value)} />
+      </Field>
+      <Field
+        label="Minimum age"
+        hint="Optional — e.g. 18 for roles handling funds or working closely with children"
+      >
+        <Input
+          type="number"
+          min={0}
+          max={120}
+          value={form.minimumAge}
+          onChange={(e) => set("minimumAge", e.target.value)}
+          placeholder="No minimum"
+          className="max-w-32"
+        />
+      </Field>
+      <Checkbox
+        label="Requires safeguarding clearance"
+        checked={form.requiresSafeguardingClearance}
+        onChange={(e) => set("requiresSafeguardingClearance", e.target.checked)}
+      />
+      <p className="-mt-2 text-xs text-slate-500">
+        A separate, fairer factor than age alone — the volunteer must be marked "safeguarding
+        cleared" on their member profile. The two requirements combine: a role can need either,
+        both, or neither.
+      </p>
+      <Checkbox label="Active" checked={form.isActive} onChange={(e) => set("isActive", e.target.checked)} />
+      <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? "Saving…" : role ? "Save changes" : "Add role"}
+        </Button>
+      </div>
+    </form>
+  );
+};
+
+const RolesManager = ({ roles, onChanged }: { roles: VolunteerRole[]; onChanged: () => void }) => {
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<VolunteerRole | null>(null);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setCreating(true)}>
+          New role
+        </Button>
+      </div>
+      <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+        {roles.map((r) => (
+          <li key={r.id} className="flex items-start justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <p className="font-medium text-slate-900">
+                {r.name}
+                {!r.isActive && <span className="ml-1.5 text-xs text-slate-400">(inactive)</span>}
+              </p>
+              {r.description && <p className="text-xs text-slate-500">{r.description}</p>}
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {r.minimumAge != null && <Badge tone="blue">{r.minimumAge}+ only</Badge>}
+                {r.requiresSafeguardingClearance && (
+                  <Badge tone="amber">
+                    <ShieldCheck size={11} className="mr-1 inline" />
+                    Clearance required
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => setEditing(r)}>
+              Edit
+            </Button>
+          </li>
+        ))}
+      </ul>
+
+      <Modal open={creating} title="New volunteer role" onClose={() => setCreating(false)}>
+        <RoleForm
+          onCancel={() => setCreating(false)}
+          onSaved={() => {
+            setCreating(false);
+            onChanged();
+          }}
+        />
+      </Modal>
+      <Modal open={!!editing} title="Edit volunteer role" onClose={() => setEditing(null)}>
+        {editing && (
+          <RoleForm
+            role={editing}
+            onCancel={() => setEditing(null)}
+            onSaved={() => {
+              setEditing(null);
+              onChanged();
+            }}
+          />
+        )}
+      </Modal>
+    </div>
+  );
+};
+
 export const VolunteersPage = () => {
   const { can } = useAuth();
   const mayEdit = can("FINANCE", "DEPT_HEAD");
 
   const [eventId, setEventId] = useState("");
   const [assigning, setAssigning] = useState(false);
+  const [managingRoles, setManagingRoles] = useState(false);
 
   const events = useApi(
     (signal) =>
@@ -192,9 +354,14 @@ export const VolunteersPage = () => {
         subtitle="Build the rota for upcoming services. Suggestions rank by declared skills and time since last serving."
         actions={
           mayEdit && (
-            <Button onClick={() => setAssigning(true)} disabled={!eventId}>
-              Assign a volunteer
-            </Button>
+            <>
+              <Button variant="secondary" onClick={() => setManagingRoles(true)}>
+                Manage roles
+              </Button>
+              <Button onClick={() => setAssigning(true)} disabled={!eventId}>
+                Assign a volunteer
+              </Button>
+            </>
           )
         }
       />
@@ -289,6 +456,10 @@ export const VolunteersPage = () => {
             onSaved={() => assignments.reload()}
           />
         )}
+      </Modal>
+
+      <Modal open={managingRoles} title="Volunteer roles" onClose={() => setManagingRoles(false)} wide>
+        <RolesManager roles={roles.data?.data ?? []} onChanged={() => roles.reload()} />
       </Modal>
     </>
   );

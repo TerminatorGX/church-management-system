@@ -8,5 +8,8 @@ export default defineConfig({
     testTimeout: 20000,
     hookTimeout: 20000,
     fileParallelism: false,
+    // Exclude stale compiled output in dist/ — without this, vitest's default
+    // glob also picks up old *.test.js files left over from `npm run build`.
+    exclude: ["**/node_modules/**", "dist/**"],
   },
 });

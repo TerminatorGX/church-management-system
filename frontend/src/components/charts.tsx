@@ -35,10 +35,10 @@ const GRID = "#e2e8f0";
 
 const tooltipStyle = {
   contentStyle: {
-    borderRadius: 8,
+    borderRadius: 12,
     border: "1px solid #e2e8f0",
     fontSize: 13,
-    boxShadow: "0 4px 12px rgb(15 23 42 / 0.08)",
+    boxShadow: "0 8px 24px rgb(15 23 42 / 0.1)",
   },
   labelStyle: { color: "#0f172a", fontWeight: 600, marginBottom: 4 },
 } as const;
@@ -61,7 +61,7 @@ export const ChartFrame = ({
         <div className="mb-2 flex justify-end">
           <button
             onClick={() => setShowTable((v) => !v)}
-            className="rounded px-2 py-1 text-xs font-medium text-slate-500 underline hover:text-slate-700"
+            className="rounded-lg px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50"
           >
             {showTable ? "Show chart" : "Show as table"}
           </button>

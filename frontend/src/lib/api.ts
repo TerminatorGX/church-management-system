@@ -55,7 +55,10 @@ export const api = async <T>(path: string, options: RequestOptions = {}): Promis
     signal: options.signal,
   });
 
-  if (response.status === 401) {
+  // A 401 from the login endpoint itself means "wrong credentials", not an
+  // expired session — let it fall through to the generic error handling
+  // below so the server's actual message reaches the user.
+  if (response.status === 401 && path !== "/auth/login") {
     tokenStore.clear();
     onUnauthorized?.();
     throw new ApiError(401, "Your session has expired. Please sign in again.");

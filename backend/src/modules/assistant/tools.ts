@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import type { ChatCompletionTool } from "groq-sdk/resources/chat/completions";
 import { prisma } from "../../lib/prisma";
+import { ageOn } from "../../lib/dates";
 import type { AuthedUser } from "../../middleware/auth";
 
 /**
@@ -130,10 +131,11 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: "get_member_profile",
       description:
-        "One specific member's full profile: contact details, family, departments, " +
-        "attendance rate and recent volunteering over a period (giving totals included " +
-        "only for FINANCE/ADMIN callers). Call this when the user asks about one named " +
-        "person in depth, not a list of people.",
+        "One specific member's full profile: contact details, age, safeguarding clearance " +
+        "status, family, departments, attendance rate and recent volunteering over a period " +
+        "(giving totals included only for FINANCE/ADMIN callers). Call this when the user " +
+        "asks about one named person in depth, not a list of people — including whether " +
+        "they're eligible for a volunteer role (combine with list_volunteer_roles).",
       parameters: {
         type: "object",
         properties: {
@@ -195,6 +197,40 @@ export const toolDefinitions: ChatCompletionTool[] = [
               "Filter by type: SUNDAY_SERVICE, MIDWEEK_SERVICE, SMALL_GROUP, SPECIAL_EVENT, OUTREACH, CONFERENCE",
           },
           limit: { type: "integer", description: "Max events, 1-30 (default 10)" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_volunteer_roles",
+      description:
+        "Every volunteer role/ministry slot (Usher, Children's teacher, ...), with its " +
+        "description and any safeguarding requirements — a minimum age, a required background " +
+        "check / clearance, both, or neither. Call this for questions about what volunteer " +
+        "roles exist, which roles need clearance or have an age minimum, or who can serve " +
+        "where (combine with get_member_profile for a specific person's eligibility).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_recent_activity",
+      description:
+        "Recent audit log entries — who created, updated, deleted, exported, or logged in, and " +
+        "when. ADMIN only — the tool returns an error for other roles. Call this for questions " +
+        "about recent changes, who did something, or general 'what's been happening' questions " +
+        "from an admin.",
+      parameters: {
+        type: "object",
+        properties: {
+          entity: {
+            type: "string",
+            description: "Restrict to one kind of record, e.g. Member, Contribution, Event, Fund",
+          },
+          limit: { type: "integer", description: "Max entries, 1-50 (default 15)" },
         },
       },
     },
@@ -408,6 +444,8 @@ export const runTool = async (
           type: true,
           startsAt: true,
           location: true,
+          capacity: true,
+          _count: { select: { attendances: true } },
           assignments: {
             select: {
               status: true,
@@ -424,6 +462,10 @@ export const runTool = async (
           type: e.type,
           startsAt: e.startsAt.toISOString(),
           location: e.location,
+          // Null unless this specific event has a capacity set (mainly
+          // special events/conferences, not recurring services).
+          capacity: e.capacity,
+          registeredCount: e.capacity != null ? e._count.attendances : undefined,
           volunteers: e.assignments.map((a) => ({
             name: `${a.member.firstName} ${a.member.lastName}`,
             role: a.role.name,
@@ -543,6 +585,8 @@ export const runTool = async (
           phone: true,
           email: true,
           isActive: true,
+          dateOfBirth: true,
+          safeguardingCleared: true,
           family: { select: { familyName: true } },
           departmentMemberships: {
             where: { isActive: true },
@@ -579,6 +623,9 @@ export const runTool = async (
         phone: member.phone,
         email: member.email,
         active: member.isActive,
+        // For volunteer-eligibility questions — pair with list_volunteer_roles.
+        age: member.dateOfBirth ? ageOn(member.dateOfBirth) : null,
+        safeguardingCleared: member.safeguardingCleared,
         family: member.family?.familyName ?? null,
         departments: member.departmentMemberships.map((d) => ({
           name: d.department.name,
@@ -692,6 +739,7 @@ export const runTool = async (
           type: true,
           startsAt: true,
           location: true,
+          capacity: true,
           _count: {
             select: {
               attendances: { where: { status: { in: ["PRESENT", "LATE"] } } },
@@ -710,7 +758,68 @@ export const runTool = async (
           date: e.startsAt.toISOString().slice(0, 10),
           location: e.location,
           attendance: e._count.attendances,
+          // Null unless this event had a capacity set.
+          capacity: e.capacity,
           volunteers: e._count.assignments,
+        })),
+      };
+    }
+
+    case "list_volunteer_roles": {
+      const roles = await prisma.volunteerRole.findMany({
+        orderBy: { name: "asc" },
+        select: {
+          name: true,
+          description: true,
+          isActive: true,
+          minimumAge: true,
+          requiresSafeguardingClearance: true,
+          _count: { select: { assignments: true } },
+        },
+      });
+
+      return {
+        roles: roles.map((r) => ({
+          name: r.name,
+          description: r.description,
+          active: r.isActive,
+          minimumAge: r.minimumAge,
+          requiresSafeguardingClearance: r.requiresSafeguardingClearance,
+          totalAssignments: r._count.assignments,
+        })),
+      };
+    }
+
+    case "get_recent_activity": {
+      if (user.role !== "ADMIN") {
+        return {
+          error:
+            "Access denied. The activity log is restricted to the ADMIN role. " +
+            "Tell the user their role does not permit viewing this.",
+        };
+      }
+
+      const entries = await prisma.auditLog.findMany({
+        where: typeof input.entity === "string" && input.entity ? { entity: input.entity } : undefined,
+        orderBy: { createdAt: "desc" },
+        take: clamp(input.limit, 1, 50, 15),
+        select: {
+          action: true,
+          entity: true,
+          summary: true,
+          createdAt: true,
+          user: { select: { name: true } },
+        },
+      });
+
+      return {
+        count: entries.length,
+        entries: entries.map((e) => ({
+          when: e.createdAt.toISOString(),
+          who: e.user?.name ?? "System",
+          action: e.action,
+          entity: e.entity,
+          summary: e.summary,
         })),
       };
     }

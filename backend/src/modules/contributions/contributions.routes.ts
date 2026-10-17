@@ -9,6 +9,7 @@ import { validate } from "../../middleware/validate";
 import { requireAuth, requireFinance, requireRole } from "../../middleware/auth";
 import { paginated, paginationSchema, toSkipTake } from "../../lib/pagination";
 import { toCsv } from "../../lib/csv";
+import { pastOrPresentDate } from "../../lib/validators";
 import { nextReceiptNumber } from "./receipt";
 
 export const contributionsRouter = Router();
@@ -30,12 +31,12 @@ const contributionBody = z.object({
     // Money arrives as a number from JSON but must reach Postgres as a
     // fixed-precision decimal, so normalise to 2dp here.
     .transform((n) => new Prisma.Decimal(n.toFixed(2))),
-  currency: z.string().length(3).default("ZMW"),
-  receivedOn: z.coerce.date(),
+  currency: z.string().trim().toUpperCase().length(3).default("ZMW"),
+  receivedOn: pastOrPresentDate("Contribution date"),
   paymentMethod: z.enum(methods).default("CASH"),
   fundId: z.string().uuid(),
   memberId: z.string().uuid().nullish(),
-  notes: z.string().nullish(),
+  notes: z.string().trim().nullish(),
 });
 
 const listQuery = paginationSchema.extend({

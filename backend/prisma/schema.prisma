@@ -174,7 +174,10 @@ model Member {
   baptismDate   DateTime?      @db.Date
   joinedDate    DateTime?      @db.Date
   address       String?
+  /// District/town — paired with `province`. Picked from a fixed Zambian
+  /// province → district list on the frontend, not free text.
   city          String?
+  province      String?
   occupation    String?
   notes         String?
   isActive      Boolean        @default(true)
@@ -188,6 +191,12 @@ model Member {
 
   /// Set when this member is the head of their household.
   isFamilyHead Boolean @default(false)
+
+  /// Vetted for roles that work closely with children or handle funds —
+  /// e.g. background check / child-protection training completed. A
+  /// deliberately separate factor from age: age alone is a blunt proxy for
+  /// trustworthiness, this is a verified one. See VolunteerRole below.
+  safeguardingCleared Boolean @default(false)
 
   user                 User?
   departmentMemberships DepartmentMember[]
@@ -248,6 +257,10 @@ model Event {
   endsAt      DateTime?
   location    String?
   description String?
+  /// Optional — mainly useful for special events/conferences with limited
+  /// seating, not recurring Sunday/midweek services. Informational: attendance
+  /// is recorded after the fact, so this is never a hard cap on check-in.
+  capacity    Int?
 
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
@@ -340,6 +353,12 @@ model VolunteerRole {
   name        String  @unique // Usher, Worship, Children's ministry, Sound...
   description String?
   isActive    Boolean @default(true)
+
+  /// Safeguarding gate, checked on assignment — see Member.safeguardingCleared.
+  /// Independent, combinable factors: a role can require an age, clearance,
+  /// both, or neither, instead of leaning on age alone.
+  minimumAge                     Int?
+  requiresSafeguardingClearance  Boolean @default(false)
 
   assignments VolunteerAssignment[]
 

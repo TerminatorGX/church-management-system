@@ -44,6 +44,23 @@ const ROUTES: { test: (path: string) => boolean; questions: string[] }[] = [
   { test: (p) => p.startsWith("/contributions") || p.startsWith("/funds"), questions: FINANCE_QUESTIONS },
 ];
 
+/** Human-readable labels for the data tools the assistant reports having used. */
+export const TOOL_LABELS: Record<string, string> = {
+  search_members: "member directory",
+  get_attendance_summary: "attendance records",
+  get_giving_summary: "giving ledger",
+  get_upcoming_schedule: "volunteer schedule",
+  find_members_needing_follow_up: "follow-up list",
+  get_church_overview: "church overview",
+  get_fund_details: "fund details",
+  get_member_profile: "member profile",
+  search_families: "family directory",
+  get_department_roster: "department roster",
+  get_past_events: "past events",
+  list_volunteer_roles: "volunteer roles",
+  get_recent_activity: "activity log",
+};
+
 export const getSuggestions = (pathname: string, canSeeFinance: boolean): string[] => {
   const matched = ROUTES.find((r) => r.test(pathname));
   const list = matched?.questions ?? GENERAL;

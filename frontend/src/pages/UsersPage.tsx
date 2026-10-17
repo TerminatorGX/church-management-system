@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api, ApiError, type Paginated } from "../lib/api";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../context/AuthContext";
-import { fmtRelative, fullName } from "../lib/format";
+import { fmtRelative, fullName, titleCaseName } from "../lib/format";
 import {
   Badge,
   Button,
@@ -76,13 +76,20 @@ const UserForm = ({
         </div>
       )}
       <Field label="Full name">
-        <Input value={form.name} onChange={(e) => set("name", e.target.value)} required autoFocus />
+        <Input
+          value={form.name}
+          onChange={(e) => set("name", e.target.value)}
+          onBlur={(e) => set("name", titleCaseName(e.target.value))}
+          required
+          autoFocus
+        />
       </Field>
       <Field label="Email">
         <Input
           type="email"
           value={form.email}
           onChange={(e) => set("email", e.target.value)}
+          onBlur={(e) => set("email", e.target.value.trim().toLowerCase())}
           required
         />
       </Field>

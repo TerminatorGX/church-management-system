@@ -51,6 +51,7 @@ const EventForm = ({
     location: event?.location ?? "",
     description: event?.description ?? "",
     departmentId: event?.departmentId ?? "",
+    capacity: event?.capacity != null ? String(event.capacity) : "",
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -71,6 +72,7 @@ const EventForm = ({
           location: form.location || null,
           description: form.description || null,
           departmentId: form.departmentId || null,
+          capacity: form.capacity ? Number(form.capacity) : null,
         },
       });
       onSaved();
@@ -127,9 +129,23 @@ const EventForm = ({
           />
         </Field>
       </div>
-      <Field label="Location">
-        <Input value={form.location} onChange={(e) => set("location", e.target.value)} />
-      </Field>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Location">
+          <Input value={form.location} onChange={(e) => set("location", e.target.value)} />
+        </Field>
+        <Field
+          label="Capacity"
+          hint="Optional — mainly for special events/conferences with limited seating"
+        >
+          <Input
+            type="number"
+            min={1}
+            value={form.capacity}
+            onChange={(e) => set("capacity", e.target.value)}
+            placeholder="No limit"
+          />
+        </Field>
+      </div>
       <Field label="Description">
         <Textarea value={form.description} onChange={(e) => set("description", e.target.value)} />
       </Field>
@@ -242,7 +258,22 @@ export const EventsPage = () => {
                         </Td>
                         <Td className="text-slate-600">{fmtDateTime(ev.startsAt)}</Td>
                         <Td className="text-slate-600">{ev.location ?? "—"}</Td>
-                        <Td>{ev._count?.attendances ?? 0}</Td>
+                        <Td>
+                          {ev._count?.attendances ?? 0}
+                          {ev.capacity != null && (
+                            <span
+                              className={`ml-1 text-xs ${
+                                (ev._count?.attendances ?? 0) >= ev.capacity
+                                  ? "font-medium text-red-600"
+                                  : (ev._count?.attendances ?? 0) >= ev.capacity * 0.9
+                                    ? "font-medium text-accent-700"
+                                    : "text-slate-400"
+                              }`}
+                            >
+                              / {ev.capacity}
+                            </span>
+                          )}
+                        </Td>
                         <Td>{ev._count?.assignments ?? 0}</Td>
                         {mayEdit && (
                           <Td>

@@ -1,50 +1,71 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import {
+  Calendar,
+  CheckSquare,
+  Home,
+  Layers,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  PiggyBank,
+  ScrollText,
+  Settings,
+  Sparkles,
+  Users,
+  HeartHandshake,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { FloatingAssistant } from "./FloatingAssistant";
+import { BrandMark } from "./BrandMark";
 import type { Role } from "../lib/types";
 
 interface NavItem {
   to: string;
   label: string;
-  icon: string;
+  icon: LucideIcon;
   /** Empty means every signed-in role may see it (ADMIN always can). */
   roles: Role[];
+  /** Restricted to ADMIN specifically — distinct from the roles list above. */
+  adminOnly?: boolean;
 }
 
 const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Overview",
-    items: [{ to: "/", label: "Dashboard", icon: "▦", roles: [] }],
+    items: [{ to: "/", label: "Dashboard", icon: LayoutDashboard, roles: [] }],
   },
   {
     section: "People",
     items: [
-      { to: "/members", label: "Members", icon: "◉", roles: [] },
-      { to: "/families", label: "Families", icon: "⌂", roles: [] },
-      { to: "/departments", label: "Departments", icon: "❖", roles: [] },
+      { to: "/members", label: "Members", icon: Users, roles: [] },
+      { to: "/families", label: "Families", icon: Home, roles: [] },
+      { to: "/departments", label: "Departments", icon: Layers, roles: [] },
     ],
   },
   {
     section: "Activity",
     items: [
-      { to: "/events", label: "Events", icon: "▤", roles: [] },
-      { to: "/attendance", label: "Attendance", icon: "✓", roles: [] },
-      { to: "/volunteers", label: "Volunteers", icon: "✦", roles: [] },
+      { to: "/events", label: "Events", icon: Calendar, roles: [] },
+      { to: "/attendance", label: "Attendance", icon: CheckSquare, roles: [] },
+      { to: "/volunteers", label: "Volunteers", icon: HeartHandshake, roles: [] },
     ],
   },
   {
     section: "Finance",
     items: [
-      { to: "/contributions", label: "Contributions", icon: "◈", roles: ["FINANCE"] },
-      { to: "/funds", label: "Funds", icon: "◇", roles: ["FINANCE"] },
+      { to: "/contributions", label: "Contributions", icon: Wallet, roles: ["FINANCE"] },
+      { to: "/funds", label: "Funds", icon: PiggyBank, roles: ["FINANCE"] },
     ],
   },
   {
     section: "Tools",
     items: [
-      { to: "/assistant", label: "AI Assistant", icon: "✧", roles: [] },
-      { to: "/users", label: "User accounts", icon: "⚙", roles: [] },
+      { to: "/assistant", label: "AI Assistant", icon: Sparkles, roles: [] },
+      { to: "/audit-log", label: "Audit log", icon: ScrollText, roles: [], adminOnly: true },
+      { to: "/users", label: "User accounts", icon: Settings, roles: [], adminOnly: true },
     ],
   },
 ];
@@ -64,9 +85,8 @@ export const Layout = () => {
 
   const visibleSections = NAV.map((section) => ({
     ...section,
-    // "User accounts" is admin-only and isn't expressible via the roles list.
     items: section.items.filter(
-      (item) => (item.to !== "/users" || user?.role === "ADMIN") && (item.roles.length === 0 || can(...item.roles)),
+      (item) => (!item.adminOnly || user?.role === "ADMIN") && (item.roles.length === 0 || can(...item.roles)),
     ),
   })).filter((section) => section.items.length > 0);
 
@@ -82,11 +102,8 @@ export const Layout = () => {
           menuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-16 items-center gap-2 border-b border-slate-100 px-5">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-sm font-bold text-white">
-            C
-          </span>
-          <span className="font-semibold text-slate-900">Church MS</span>
+        <div className="flex h-16 items-center border-b border-slate-100 px-5">
+          <BrandMark size="sm" withWordmark />
         </div>
 
         <nav className="p-3">
@@ -109,9 +126,7 @@ export const Layout = () => {
                     }`
                   }
                 >
-                  <span aria-hidden className="w-4 text-center opacity-70">
-                    {item.icon}
-                  </span>
+                  <item.icon size={17} className="shrink-0 opacity-80" />
                   {item.label}
                 </NavLink>
               ))}
@@ -134,7 +149,7 @@ export const Layout = () => {
             className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
             aria-label="Toggle navigation"
           >
-            ☰
+            <Menu size={20} />
           </button>
 
           <div className="ml-auto flex items-center gap-3">
@@ -144,8 +159,9 @@ export const Layout = () => {
             </div>
             <button
               onClick={handleSignOut}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
             >
+              <LogOut size={14} />
               Sign out
             </button>
           </div>

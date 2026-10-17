@@ -3,7 +3,10 @@ import { Link } from "react-router-dom";
 import { api, ApiError, type Paginated } from "../lib/api";
 import { useApi, useDebounced } from "../hooks/useApi";
 import { useAuth } from "../context/AuthContext";
-import { fullName } from "../lib/format";
+import { fullName, titleCaseName } from "../lib/format";
+
+/** Zambian mobile numbers — mirrors the backend's format check in validators.ts. */
+const ZM_PHONE_PATTERN = "^(?:\\+?260|0)(7|9)\\d{8}$";
 import {
   Button,
   Card,
@@ -77,14 +80,22 @@ const FamilyForm = ({
         <Input
           value={form.familyName}
           onChange={(e) => set("familyName", e.target.value)}
-          placeholder="e.g. Mumba family"
+          onBlur={(e) => set("familyName", titleCaseName(e.target.value))}
+          placeholder="e.g. Mumba Family"
           required
           autoFocus
         />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Phone">
-          <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+        <Field label="Phone" hint="e.g. 0971234567">
+          <Input
+            type="tel"
+            value={form.phone}
+            onChange={(e) => set("phone", e.target.value)}
+            pattern={ZM_PHONE_PATTERN}
+            title="A Zambian mobile number, e.g. 0971234567"
+            placeholder="0971234567"
+          />
         </Field>
         <Field label="City">
           <Input value={form.city} onChange={(e) => set("city", e.target.value)} />

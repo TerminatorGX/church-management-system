@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Calendar, Clock, Home, Users, Wallet } from "lucide-react";
 import { api, downloadFile } from "../lib/api";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../context/AuthContext";
@@ -14,34 +15,21 @@ import {
   type CoveragePoint,
   type GrowthPoint,
 } from "../components/charts";
-import { Badge, Button, Card, EmptyState, ErrorBox, PageHeader, Select, Spinner, Table, Td, Th } from "../components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorBox,
+  PageHeader,
+  Select,
+  Spinner,
+  StatCard,
+  Table,
+  Td,
+  Th,
+} from "../components/ui";
 import type { DashboardSummary } from "../lib/types";
-
-const StatTile = ({
-  label,
-  value,
-  detail,
-  tone,
-}: {
-  label: string;
-  value: string | number;
-  detail?: string;
-  tone?: "up" | "down";
-}) => (
-  <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-    <p className="text-sm text-slate-500">{label}</p>
-    <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">{value}</p>
-    {detail && (
-      <p
-        className={`mt-1 text-sm ${
-          tone === "up" ? "text-emerald-700" : tone === "down" ? "text-red-700" : "text-slate-500"
-        }`}
-      >
-        {detail}
-      </p>
-    )}
-  </div>
-);
 
 export const DashboardPage = () => {
   const { user, can } = useAuth();
@@ -138,39 +126,33 @@ export const DashboardPage = () => {
       {s && (
         <>
           <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile
+            <StatCard
+              icon={<Users size={18} />}
               label="Active members"
               value={s.activeMembers}
-              detail={`${s.newThisMonth} joined this month`}
+              hint={`${s.newThisMonth} joined this month`}
             />
-            <StatTile label="Families" value={s.totalFamilies} detail="Households on record" />
-            <StatTile
+            <StatCard icon={<Home size={18} />} label="Families" value={s.totalFamilies} hint="Households on record" />
+            <StatCard
+              icon={<Calendar size={18} />}
               label="Last service"
               value={s.lastService?.attendance ?? "—"}
-              detail={s.lastService ? fmtDate(s.lastService.startsAt) : "No services recorded"}
+              hint={s.lastService ? fmtDate(s.lastService.startsAt) : "No services recorded"}
             />
             {s.finance ? (
-              <StatTile
+              <StatCard
+                icon={<Wallet size={18} />}
                 label="Giving this month"
                 value={fmtMoney(s.finance.thisMonth)}
-                detail={
-                  s.finance.changePercent === null
-                    ? `${s.finance.contributionCount} contributions`
-                    : `${s.finance.changePercent >= 0 ? "+" : ""}${s.finance.changePercent}% vs last month`
-                }
-                tone={
-                  s.finance.changePercent === null
-                    ? undefined
-                    : s.finance.changePercent >= 0
-                      ? "up"
-                      : "down"
-                }
+                hint={s.finance.changePercent === null ? `${s.finance.contributionCount} contributions` : undefined}
+                trend={s.finance.changePercent === null ? undefined : { value: s.finance.changePercent }}
               />
             ) : (
-              <StatTile
+              <StatCard
+                icon={<Clock size={18} />}
                 label="Pending volunteer slots"
                 value={s.pendingAssignments}
-                detail={`${s.upcomingEvents} events coming up`}
+                hint={`${s.upcomingEvents} events coming up`}
               />
             )}
           </div>

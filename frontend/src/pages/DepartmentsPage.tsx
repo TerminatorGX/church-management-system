@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   EmptyState,
   ErrorBox,
   Field,
@@ -62,15 +63,7 @@ const DepartmentForm = ({
       <Field label="Description">
         <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
       </Field>
-      <label className="flex items-center gap-2 text-sm text-slate-700">
-        <input
-          type="checkbox"
-          checked={isActive}
-          onChange={(e) => setIsActive(e.target.checked)}
-          className="h-4 w-4 rounded border-slate-300"
-        />
-        Active
-      </label>
+      <Checkbox label="Active" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
       <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel

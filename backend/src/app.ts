@@ -15,6 +15,7 @@ import { contributionsRouter } from "./modules/contributions/contributions.route
 import { volunteersRouter } from "./modules/volunteers/volunteers.routes";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
 import { assistantRouter } from "./modules/assistant/assistant.routes";
+import { auditRouter } from "./modules/audit/audit.routes";
 
 export const createApp = () => {
   const app = express();
@@ -43,6 +44,7 @@ export const createApp = () => {
   app.use("/api/volunteers", volunteersRouter);
   app.use("/api/dashboard", dashboardRouter);
   app.use("/api/assistant", assistantRouter);
+  app.use("/api/audit-logs", auditRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -1,18 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Maximize2, Sparkles, X } from "lucide-react";
 import { useAssistantChat } from "../hooks/useAssistantChat";
 import { useAuth } from "../context/AuthContext";
-import { getSuggestions } from "../lib/assistantSuggestions";
-import { Spinner } from "./ui";
-
-const TOOL_LABELS: Record<string, string> = {
-  search_members: "member directory",
-  get_attendance_summary: "attendance records",
-  get_giving_summary: "giving ledger",
-  get_upcoming_schedule: "volunteer schedule",
-  find_members_needing_follow_up: "follow-up list",
-  get_church_overview: "church overview",
-};
+import { getSuggestions, TOOL_LABELS } from "../lib/assistantSuggestions";
+import { ChatBubble, Spinner, ThinkingBubble } from "./ui";
 
 /**
  * A quick-question chat bubble mounted once in the shared Layout, so it's
@@ -45,26 +37,26 @@ export const FloatingAssistant = () => {
   return (
     <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
       {open && (
-        <div className="flex h-[28rem] w-80 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl sm:w-96">
+        <div className="flex h-[28rem] w-80 flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-xl shadow-slate-900/10 sm:w-96">
           <header className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
             <div>
-              <p className="text-sm font-semibold text-slate-900">AI Assistant</p>
+              <p className="font-display text-sm font-semibold text-slate-900">AI Assistant</p>
               <p className="text-xs text-slate-500">Ask about your data</p>
             </div>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => navigate("/assistant")}
-                className="rounded p-1.5 text-xs text-slate-500 hover:bg-slate-100"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
                 title="Open full page"
               >
-                ⤢
+                <Maximize2 size={14} />
               </button>
               <button
                 onClick={() => setOpen(false)}
                 aria-label="Close"
-                className="rounded p-1.5 text-slate-500 hover:bg-slate-100"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
           </header>
@@ -98,32 +90,10 @@ export const FloatingAssistant = () => {
                 )}
 
                 {chat.messages.map((m) => (
-                  <div key={m.id} className={`flex ${m.role === "USER" ? "justify-end" : "justify-start"}`}>
-                    <div
-                      className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
-                        m.role === "USER"
-                          ? "bg-brand-600 text-white"
-                          : "border border-slate-200 bg-white text-slate-800"
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap">{m.content}</p>
-                      {m.role === "ASSISTANT" && m.toolsUsed.length > 0 && (
-                        <p className="mt-1.5 border-t border-slate-100 pt-1.5 text-[11px] text-slate-400">
-                          Checked: {m.toolsUsed.map((t) => TOOL_LABELS[t] ?? t).join(", ")}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  <ChatBubble key={m.id} message={m} toolLabel={(t) => TOOL_LABELS[t] ?? t} compact />
                 ))}
 
-                {chat.thinking && (
-                  <div className="flex justify-start">
-                    <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600" />
-                      Looking that up…
-                    </div>
-                  </div>
-                )}
+                {chat.thinking && <ThinkingBubble label="Looking that up…" compact />}
 
                 {chat.error && <p className="text-xs text-red-600">{chat.error}</p>}
                 <div ref={endRef} />
@@ -159,9 +129,9 @@ export const FloatingAssistant = () => {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={open ? "Close assistant" : "Open assistant"}
-        className="grid h-14 w-14 place-items-center rounded-full bg-brand-600 text-xl text-white shadow-lg transition hover:bg-brand-700"
+        className="grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-brand-600 to-brand-700 text-white shadow-lg shadow-brand-600/30 transition hover:from-brand-700 hover:to-brand-800"
       >
-        {open ? "✕" : "✧"}
+        {open ? <X size={22} /> : <Sparkles size={22} />}
       </button>
     </div>
   );

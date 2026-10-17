@@ -7,16 +7,17 @@ import { audit } from "../../lib/audit";
 import { validate } from "../../middleware/validate";
 import { requireAuth, requireRole, requireStaff } from "../../middleware/auth";
 import { paginated, paginationSchema, toSkipTake } from "../../lib/pagination";
+import { nameField, optionalZambianPhone } from "../../lib/validators";
 
 export const familiesRouter = Router();
 familiesRouter.use(requireAuth);
 
 const familyBody = z.object({
-  familyName: z.string().min(1, "Family name is required"),
-  address: z.string().nullish(),
-  city: z.string().nullish(),
-  phone: z.string().nullish(),
-  notes: z.string().nullish(),
+  familyName: nameField("Family name"),
+  address: z.string().trim().nullish(),
+  city: z.string().trim().nullish(),
+  phone: optionalZambianPhone,
+  notes: z.string().trim().nullish(),
 });
 
 const listQuery = paginationSchema.extend({

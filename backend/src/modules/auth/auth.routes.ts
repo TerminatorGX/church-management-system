@@ -11,6 +11,7 @@ import { audit } from "../../lib/audit";
 import { sendPasswordResetEmail } from "../../lib/mailer";
 import { validate } from "../../middleware/validate";
 import { requireAuth, requireRole, signToken } from "../../middleware/auth";
+import { emailField, nameField } from "../../lib/validators";
 
 export const authRouter = Router();
 
@@ -27,7 +28,7 @@ const loginLimiter = rateLimit({
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: emailField,
   password: z.string().min(1, "Password is required"),
 });
 
@@ -39,7 +40,7 @@ authRouter.post(
     const { email, password } = req.body as z.infer<typeof loginSchema>;
 
     const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email },
     });
 
     // Compare against a dummy hash when the user is missing so that a wrong
@@ -95,7 +96,7 @@ const forgotPasswordLimiter = rateLimit({
   message: { error: "Too many reset requests. Try again in 15 minutes." },
 });
 
-const forgotPasswordSchema = z.object({ email: z.string().email() });
+const forgotPasswordSchema = z.object({ email: emailField });
 
 /** Generic reply either way — confirming or denying an email exists is a user-enumeration leak. */
 const GENERIC_RESET_MESSAGE =
@@ -108,7 +109,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const { email } = req.body as z.infer<typeof forgotPasswordSchema>;
 
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await prisma.user.findUnique({ where: { email } });
 
     if (user && user.isActive) {
       const rawToken = randomBytes(32).toString("hex");
@@ -227,8 +228,8 @@ authRouter.post(
 // --- User administration (ADMIN only) -------------------------------------
 
 const createUserSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1),
+  email: emailField,
+  name: nameField("Name"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: z.enum(["ADMIN", "FINANCE", "DEPT_HEAD", "VIEWER"]),
   memberId: z.string().uuid().nullish(),
@@ -266,7 +267,7 @@ authRouter.post(
 
     const user = await prisma.user.create({
       data: {
-        email: body.email.toLowerCase(),
+        email: body.email,
         name: body.name,
         passwordHash: await bcrypt.hash(body.password, 10),
         role: body.role,
@@ -281,7 +282,7 @@ authRouter.post(
 );
 
 const updateUserSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: nameField("Name").optional(),
   role: z.enum(["ADMIN", "FINANCE", "DEPT_HEAD", "VIEWER"]).optional(),
   isActive: z.boolean().optional(),
   memberId: z.string().uuid().nullish(),

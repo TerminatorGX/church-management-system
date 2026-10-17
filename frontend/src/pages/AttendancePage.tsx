@@ -172,6 +172,20 @@ export const AttendancePage = () => {
               <div className="flex flex-wrap gap-x-6 gap-y-1">
                 <span>
                   <strong className="text-slate-900">{livePresent}</strong> present
+                  {roster.data.data.event.capacity != null && (
+                    <span
+                      className={
+                        livePresent >= roster.data.data.event.capacity
+                          ? "font-medium text-red-600"
+                          : livePresent >= roster.data.data.event.capacity * 0.9
+                            ? "font-medium text-accent-700"
+                            : "text-slate-400"
+                      }
+                    >
+                      {" "}
+                      / {roster.data.data.event.capacity} capacity
+                    </span>
+                  )}
                 </span>
                 <span className="text-slate-600">
                   {liveMarked} of {summary?.total ?? rows.length} marked
@@ -225,10 +239,10 @@ export const AttendancePage = () => {
                                   onClick={() =>
                                     setMarks((m) => ({ ...m, [entry.member.id]: status }))
                                   }
-                                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                                     current === status
-                                      ? "bg-brand-600 text-white"
-                                      : "border border-slate-200 text-slate-600 hover:bg-slate-100"
+                                      ? "bg-brand-600 text-white shadow-sm shadow-brand-600/20"
+                                      : "border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                                   }`}
                                 >
                                   {titleCase(status)}
