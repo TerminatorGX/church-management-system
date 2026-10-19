@@ -118,7 +118,7 @@ Open <http://localhost:5173>.
 ### 5. Sign in
 
 The seed creates one account per role, all sharing the password you set as
-`SEED_ADMIN_PASSWORD` in `backend/.env` (defaults to `ChangeMe123!`):
+`SEED_ADMIN_PASSWORD` in `backend/.env` (defaults to `CyberGod565617`):
 
 | Email                   | Role            | Sees                                       |
 | ----------------------- | --------------- | ------------------------------------------ |
@@ -233,6 +233,3 @@ Postgres, not slow tests.
 | `frontend` | `npm test`           | Run the component/unit test suite           |
 | `frontend` | `npm run build`      | Production build                            |
 
-## Licence
-
-MIT
